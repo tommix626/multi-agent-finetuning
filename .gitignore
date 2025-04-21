@@ -32,6 +32,7 @@ checkpoints/
 
 # Dataset artifacts
 data/*
+!data/mmlu
 !data/README.md         # Keep a placeholder/README
 !data/**/*.py
 !data/**/*.ipynb
