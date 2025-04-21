@@ -1,0 +1,57 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.pyo
+*.egg-info/
+*.egg
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Logs and outputs
+logs/
+*.log
+*.out
+*.err
+
+# Model checkpoints and results
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.h5
+
+# Config/runtime artifacts
+*.sqlite3
+*.db
+*.tmp
+*.bak
+*.lock
+
+# Dataset artifacts
+data/*
+!data/README.md         # Keep a placeholder/README
+!data/**/*.py
+!data/**/*.ipynb
+!data/__init__.py
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Tools & IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# Mac and Linux system files
+.DS_Store
+Thumbs.db
+
+# PyTorch lightning or wandb
+wandb/
+lightning_logs/
