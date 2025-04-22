@@ -40,6 +40,7 @@ data/*
 
 # Virtual environments
 .venv/
+.venv
 env/
 venv/
 ENV/
@@ -56,3 +57,5 @@ Thumbs.db
 # PyTorch lightning or wandb
 wandb/
 lightning_logs/
+
+pyrightconfig.json
