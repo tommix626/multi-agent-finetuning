@@ -8,7 +8,7 @@ import random
 from typing import List, Tuple
 
 from peft import PeftConfig, PeftModel, peft_model
-from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from transformers.models.auto.modeling_auto import AutoModel, AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from models.expert_adapter import ExpertAdapter
@@ -16,9 +16,10 @@ from models.expert_agent import ExpertAgent
 import transformers
 
 class ExpertCluster:
-    def __init__(self, base_model_name: str, peft_config: PeftConfig, num_experts: int, device: str):
+    def __init__(self, base_model: PeftModel, tokenizer:AutoTokenizer, peft_config: PeftConfig, num_experts: int, device: str):
         self.peft_config = peft_config
-        self.peft_model, self.tokenizer = self._setup_peft_model(base_model_name)
+        self.peft_model, self.tokenizer = base_model, tokenizer
+        # self.peft_model, self.tokenizer = self._setup_peft_model(base_model_name)
 
         self.experts: List[ExpertAgent] = []
         self._init_agent(num_experts)
