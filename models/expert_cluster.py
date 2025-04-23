@@ -4,6 +4,7 @@ The base model is in control of the expert cluster, and the agent only provide a
 
 """
 
+import random
 from typing import List, Tuple
 
 from peft import PeftConfig, PeftModel, peft_model
@@ -43,6 +44,11 @@ class ExpertCluster:
         chosen_expert_id = self._select(perplexities)
         return chosen_expert_id
 
-    def _select(self, perplexities: List[int]) -> int:
-        """delegation strategy for which expert to train on"""
+    def _select(self, perplexities: List[float]) -> int:
+        """delegation strategy for which expert to train on
+    should incorporate some regularization (randomness). As per Daniel's suggestion.
+        """
+        perplexities = [-p for p in perplexities]
+        index = [i for (i,_) in enumerate(perplexities)]
+        return random.choices(index, perplexities)[0]
 
