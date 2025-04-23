@@ -228,15 +228,15 @@ def pre_process(model_name, batch_size, device, type='auto'):
 
     print(" >>>>>>>> Initializing the data loaders ... ")
     train_dataloader = DataLoader(
-        mmluDataset(dataset_train_subset, mytokenizer, max_len),
+        mmluDataset(dataset_train, mytokenizer, max_len),
         batch_size=batch_size,
     )
     validation_dataloader = DataLoader(
-        mmluDataset(dataset_dev_subset, mytokenizer, max_len),
+        mmluDataset(dataset_dev, mytokenizer, max_len),
         batch_size=batch_size
     )
     test_dataloader = DataLoader(
-        mmluDataset(dataset_test_subset, mytokenizer, max_len),
+        mmluDataset(dataset_test, mytokenizer, max_len),
         batch_size=batch_size
     )
 
