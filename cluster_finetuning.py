@@ -10,7 +10,7 @@ from training.cluster_perplexity_trainer import TrainerConfig,ExpertTrainer
 
 def main():
     # 1. Hyperparameters and paths
-    model_name = "EleutherAI/pythia-70m"
+    model_name = "EleutherAI/gpt-neo-125M"
     batch_size = 8
     num_epochs = 3
     num_experts = 4

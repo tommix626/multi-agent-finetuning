@@ -14,8 +14,8 @@ from peft import get_peft_model
 import torch
 from typing import Optional, List
 
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 from transformers.models.auto.tokenization_auto import AutoTokenizer
-from transformers.utils.dummy_pt_objects import AutoModelForCausalLM
 from models.expert_cluster import ExpertCluster
 from models.expert_agent import ExpertAgent
 from torch.utils.data import DataLoader
@@ -25,7 +25,7 @@ from training.callbacks import Callback
 
 class TrainerConfig:
     def __init__(self,
-                 model_name: str = "EleutherAI/pythia-70m",
+                 model_name: str = "EleutherAI/gpt-neo-125M",
                  num_experts: int = 3,
                  lr: float = 1e-4,
                  epochs: int = 3,

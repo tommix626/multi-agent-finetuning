@@ -53,7 +53,7 @@ class ExpertAdapter:
         """
         Load itself pretrained LoRA adapter into the base model.
         """
-        adapter_path = self._path_to_file() if adapter_path is not None else adapter_path
+        adapter_path = self._path_to_file() if adapter_path is None else adapter_path
         if not os.path.isfile(adapter_path):
             self.attach_raw()
             print(f"[ExpertAdapter] Adapter {self.name} not found, newly initiating one...")

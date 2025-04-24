@@ -20,11 +20,11 @@ class ExpertCluster:
         self.peft_config = peft_config
         self.peft_model, self.tokenizer = base_model, tokenizer
         # self.peft_model, self.tokenizer = self._setup_peft_model(base_model_name)
+        self.device = device
 
         self.experts: List[ExpertAgent] = []
         self._init_agent(num_experts)
 
-        self.device = device
 
     def _setup_peft_model(self, base_model_name: str) -> Tuple[PeftModel, AutoTokenizer]:
         """setup the base model and return the model."""
@@ -40,10 +40,10 @@ class ExpertCluster:
             self.experts.append(ExpertAgent(i, self.peft_model, self.peft_config, self.tokenizer, self.device))  # expert themselves manage the adapter logics.
 
 
-    def delegate_and_assign(self, row):
-        perplexities = [exp.compute_perplexity(row["text"]) for exp in self.experts]
+    def delegate_to_expert(self, batch:dict) -> ExpertAgent:
+        perplexities = [exp.compute_perplexity(batch) for exp in self.experts]
         chosen_expert_id = self._select(perplexities)
-        return chosen_expert_id
+        return self.experts[chosen_expert_id]
 
     def _select(self, perplexities: List[float]) -> int:
         """delegation strategy for which expert to train on
