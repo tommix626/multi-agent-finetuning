@@ -17,12 +17,20 @@ import torch
 import os
 
 class ExpertAdapter:
-    def __init__(self, base_peft_model: PeftModel, config:PeftConfig, name: str, tokenizer, device="cuda", target_modules=None):
+    def __init__(self, base_peft_model: PeftModel, config:PeftConfig, name: str, tokenizer, device="cuda", target_modules=None, force_new=False):
         self.device = device
         self.base_peft_model = base_peft_model
         self.tokenizer = tokenizer
         self.target_modules = target_modules or ["q_proj", "v_proj"]
         self.name = name
+        self.peft_config = config
+        self._init_new_or_load(force_new)
+
+    def _init_new_or_load(self,force_new:bool):
+        if force_new:
+            self.attach_raw()
+            return
+        self.load()
 
     def _path_to_file(self, version=1, path_only:bool=False)-> str:
         path= f"../checkpoints/"
@@ -31,38 +39,48 @@ class ExpertAdapter:
 
         if version == 1:
             return path + f"{self.name}"
+        raise ValueError("version number not recorded")
 
-    def attach_raw_to_base_model(self, lora_config: PeftConfig):
+    def attach_raw(self, ):
         """
         Attach a itself (a fresh new LoRA adapter) to the base model for training on this example.
         """
-        self.base_peft_model.add_adapter(lora_config, self.name)
+        self.base_peft_model.add_adapter(self.name, self.peft_config)
         print(f"[ExpertAdapter] Adding adapter {self.name} to base model.")
 
-    def load_adapter(self, adapter_path: Optional[str]=None, trainable=True):
+    def load(self, adapter_path: Optional[str]=None, trainable=True):
         """
         Load itself pretrained LoRA adapter into the base model.
         """
         adapter_path = self._path_to_file() if adapter_path is not None else adapter_path
+        if not os.path.isfile(adapter_path):
+            self.attach_raw()
+            print(f"[ExpertAdapter] Adapter {self.name} not found, newly initiating one...")
+            return
         self.base_peft_model.load_adapter(adapter_path, self.name, trainable=trainable)
         print(f"[ExpertAdapter] Loaded adapter from {adapter_path}")
 
-    def unload_to_base_model(self):
+    def unload(self):
         """
         Disable itself in the base model
         """
-        curr_active_adapters = self.base_peft_model.active_adapters()
+        curr_active_adapters = self.base_peft_model.active_adapters
         if self.name in curr_active_adapters:
             curr_active_adapters = curr_active_adapters.pop(curr_active_adapters.index(self.name))
             print(f"[ExpertAdapter] Unloaded adapter {self.name}. Current active adapters: {curr_active_adapters}")
         else:
-            print(f"[ExpertAdapter] Attempt to unload an inactive adapter {self.name}.")
+            print(f"[ExpertAdapter] Attempt to unload an inactive adapter {self.name}. Unloading all the active {curr_active_adapters}...")
+        self.base_peft_model.disable_adapter()
 
-    def save_adapter(self, ):
+    def save_adapter(self):
         """
         Save itself (only the LoRA adapter) weights to file.
         """
         save_path = self._path_to_file(path_only=True)
-        os.makedirs(save_path, exist_ok=True)
-        self.base_peft_model.save_pretrained(save_path, adapter_name=self.name)
+        self.base_peft_model.save_pretrained(save_path)
         print(f"[ExpertAdapter] Saved adapter {self.name} to {save_path}")
+
+    def activate(self):
+        """activate itself as the adapter in peft model, allowing training"""
+        self.base_peft_model.set_adapter(self.name)
+
