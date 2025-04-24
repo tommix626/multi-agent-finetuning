@@ -2,10 +2,11 @@
 The LoRA Adapter class for base model finetuning
 Extract all the loading/unloading/saving of the adapter logic out from ExpertAgent.
 """
-from typing import Optional
+from typing import Optional, Union
 from peft import (
     LoraConfig,
     PeftConfig,
+    PeftMixedModel,
     PeftModel,
     get_peft_model,
     prepare_model_for_kbit_training,
@@ -17,7 +18,7 @@ import torch
 import os
 
 class ExpertAdapter:
-    def __init__(self, base_peft_model: PeftModel, config:PeftConfig, name: str, tokenizer, device="cuda", target_modules=None, force_new=False):
+    def __init__(self, base_peft_model: Union[PeftModel,PeftMixedModel], config:PeftConfig, name: str, tokenizer, device="cuda", target_modules=None, force_new=False):
         self.device = device
         self.base_peft_model = base_peft_model
         self.tokenizer = tokenizer
