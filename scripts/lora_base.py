@@ -4,7 +4,6 @@ from transformers import AutoTokenizer
 import torch.nn as nn 
 from torch.utils.data import DataLoader
 from datasets import load_dataset, DatasetDict
-import evaluate as evaluate
 from transformers import get_scheduler
 from transformers import AutoModel, AutoModelForCausalLM
 import argparse
@@ -13,8 +12,12 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from peft import LoraConfig, TaskType, get_peft_model
 
-from data.mmlu.mmluwrapper import MMLUWrapper 
+import os
+print(os.listdir("/Users/lena/Desktop/multi-agent-finetuning/data/mmlu"))
 
+import sys
+sys.path.insert(0, "/Users/lena/Desktop/multi-agent-finetuning/data/mmlu")
+from mmluwrapper import MMLUWrapper
 
 # Related to BERT
 from transformers import BertConfig
