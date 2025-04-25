@@ -18,14 +18,14 @@ class MMLUWrapper:
     def _load_and_process(self):
         raw = load_dataset("cais/mmlu", "all")
 
-        train_set  = self._map_choices_to_answer(raw["test"])
-        aux_data = self._map_choices_to_answer(raw["auxiliary_train"])
+        train_set = self._map_choices_to_answer(raw["test"], "train")
+        #aux_data = self._map_choices_to_answer(raw["auxiliary_train"], "aux")
 
-        aux_split = aux_data.train_test_split(
+        aux_split = raw["auxiliary_train"].train_test_split(
             test_size=self.test_size, seed=self.seed
         )
-        dev_set = aux_split["train"]
-        test_set = aux_split["test"]
+        dev_set = self._map_choices_to_answer(aux_split["train"], "dev")
+        test_set = self._map_choices_to_answer(aux_split["test"], "test")
 
         return DatasetDict({
             "train": train_set,
@@ -33,12 +33,15 @@ class MMLUWrapper:
             "test": test_set
         })
 
-    def _map_choices_to_answer(self, dataset):
-        def _mapper(example):
+    def _map_choices_to_answer(self, dataset, split_name):
+        def _mapper(example, idx):
             answer_index = example["answer"]
             answer_str = example["choices"][answer_index]
-            return {"mapped_answer": answer_str}
-        return dataset.map(_mapper)
+            return {
+                "mapped_answer": answer_str,
+                "uid": f"{split_name}-{idx:06d}"  # e.g., train-000001
+            }
+        return dataset.map(_mapper, with_indices=True)
 
     def get_dataset(self):
         return self.dataset
@@ -77,29 +80,38 @@ class mmluDataset(torch.utils.data.Dataset):
 
         example = self.data[index]
         question = example["question"]
-        subject = example['subject']
+        #subject = example['subject']
         answer = example['mapped_answer']
+        uid = example["uid"]
 
 
-        # input encoding for your model
-        input_encoding = question
-
-        # encode_plus will encode the input and return a dictionary of tensors
-        encoded_review = self.tokenizer.encode_plus(
-            input_encoding,
+        # Tokenize the question (input)
+        input_encoding = self.tokenizer.encode_plus(
+            question,
             add_special_tokens=True,
             max_length=self.max_len,
-            return_token_type_ids=False,
-            return_attention_mask=True,
-            return_tensors="pt",
             padding="max_length",
-            truncation=True
+            truncation=True,
+            return_tensors="pt",
+            return_attention_mask=True
         )
-        
+
+        # Tokenize the answer (label)
+        answer_encoding = self.tokenizer.encode_plus(
+            answer,
+            add_special_tokens=False,
+            max_length=10,  # Short max length for answers
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
+
+        # return Dict[str, torch.Tensor]
         return {
-            'input_ids': encoded_review['input_ids'][0], 
-            'attention_mask': encoded_review['attention_mask'][0],
-            'answer': torch.tensor(answer, dtype=torch.long)  
+            'input_ids': input_encoding['input_ids'][0], 
+            'attention_mask': input_encoding['attention_mask'][0],
+            'labels': answer_encoding['input_ids'][0],  # label is encoded string
+            'uid': uid
         }
     
 def pre_process(model_name, batch_size, device, peft_config=None):
