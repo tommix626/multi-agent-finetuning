@@ -123,7 +123,7 @@ class mmluDataset(torch.utils.data.Dataset):
         return {
             'input_ids': input_encoding['input_ids'][0], 
             'attention_mask': input_encoding['attention_mask'][0],
-            'labels': answer_encoding['input_ids'][0],  # label is encoded string
+            'labels': labels,
             'uid': uid
         }
     
