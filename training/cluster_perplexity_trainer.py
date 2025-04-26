@@ -12,6 +12,7 @@ The Trainer manages:
 """
 
 from dataclasses import dataclass, asdict
+import datetime
 import json
 import os
 from typing import Optional, List
@@ -143,6 +144,17 @@ class ExpertTrainer:
 
         with open(os.path.join(base_save_dir, "trainer_state.json"), "w") as f:
             json.dump(trainer_state, f, indent=2)
+
+        metadata = {
+            "trainer_id": self.trainer_id,
+            "save_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "training_config": vars(self.config),  # safe because TrainerConfig is a dataclass
+        }
+
+        with open(os.path.join(base_save_dir, "metadata.json"), "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        print(f"[Trainer] Saved checkpoint and metadata after epoch {epoch}.")
 
     def _load_checkpoint(self):
         """Load training state and experts from latest available checkpoint."""
