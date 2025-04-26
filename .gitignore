@@ -37,6 +37,7 @@ data/*
 !data/**/*.py
 !data/**/*.ipynb
 !data/__init__.py
+
 data/mmlu/mmlu_example.py
 
 # Virtual environments
