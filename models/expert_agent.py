@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Optional
 from peft import PeftConfig, PeftModel
 import torch
 from transformers.models.auto.tokenization_auto import AutoTokenizer
@@ -76,15 +77,16 @@ class ExpertAgent:
             datapoint_id = uid
             self.training_data_freq[datapoint_id] += 1
 
-    def save(self):
+    def save(self, base_save_dir: Optional[str]):
         """Save the adapter and the training data statistics."""
-        self.adapter.save_adapter()
+        agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.get_relative_save_dir())
+        os.makedirs(agent_save_dir, exist_ok=True)
+
+        self.adapter.save_adapter(agent_save_dir)
 
         # Save training data frequency
-        save_dir = self.adapter.get_save_dir()
-        freq_path = os.path.join(save_dir, "training_data_freq.json")
+        freq_path = os.path.join(agent_save_dir, "training_data_freq.json")
 
-        os.makedirs(save_dir, exist_ok=True)
 
         freq_dict = dict(self.training_data_freq)
         with open(freq_path, "w") as f:
