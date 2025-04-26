@@ -92,3 +92,23 @@ class ExpertAgent:
 
         if self.adapter.verbose:
             print(f"[ExpertAgent] Saved training data frequency to {freq_path}.")
+
+    def load(self):
+        """Load the adapter and the training data statistics."""
+        # Load adapter
+        self.adapter.load()
+
+        # Load training data frequency
+        save_dir = self.adapter.get_save_dir()
+        freq_path = os.path.join(save_dir, "training_data_freq.json")
+
+        if os.path.isfile(freq_path):
+            with open(freq_path, "r") as f:
+                freq_dict = json.load(f)
+            self.training_data_freq = defaultdict(int, freq_dict)
+            if self.adapter.verbose:
+                print(f"[ExpertAgent] Loaded training data frequency from {freq_path}.")
+        else:
+            if self.adapter.verbose:
+                print(f"[ExpertAgent] No training data frequency file found at {freq_path}. Starting fresh.")
+            self.training_data_freq = defaultdict(int)
