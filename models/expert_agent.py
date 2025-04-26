@@ -23,7 +23,7 @@ class ExpertAgent:
         with torch.no_grad():
             input_ids = batch['input_ids'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
-            labels = batch['input_ids'].clone().to(self.device)
+            labels = batch['labels'].clone().to(self.device)
 
             outputs = self.peft_model(
                 input_ids=input_ids,
@@ -40,13 +40,13 @@ class ExpertAgent:
 
     def get_training_loss_on(self, batch: dict, record_training=True):
         """Get training this expert on a single datapoint."""
-        #TODO: Activate the adapter, forward pass, then query the log prob. Follow Hw6/Hw7
+        # Activate the adapter, forward pass, then query the log prob. Follow Hw6/Hw7
         self.adapter.activate()
         self.peft_model.train()
 
         input_ids = batch['input_ids'].to(self.device)
         attention_mask = batch['attention_mask'].to(self.device)
-        labels = batch['input_ids'].clone().to(self.device)
+        labels = batch['labels'].clone().to(self.device)
 
         outputs = self.peft_model(
             input_ids=input_ids,
@@ -73,7 +73,7 @@ class ExpertAgent:
         self.adapter = ExpertAdapter(self.peft_model, adapter_config, f"adapter_for_expert_{self.id}", tokenizer, device, force_new=True)
 
     def record_datapoint(self, batch: dict):
-        for d in batch:
-            datapoint_id = d["id"]  # TODO: require id field in dataset preprocessing.
+        for uid in batch["uid"]:
+            datapoint_id = uid
             self.training_data_freq[datapoint_id] += 1
 
