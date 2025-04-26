@@ -22,4 +22,4 @@ which python
 python --version
 
 # Launch training
-srun python scripts/cluster_training.py --config configs/cluster_training.yaml
+python scripts/cluster_training.py --config configs/cluster_training.yaml

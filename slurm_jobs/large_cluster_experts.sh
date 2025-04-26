@@ -26,4 +26,4 @@ python --version
 mkdir -p logs
 
 # Run your training script
-srun python scripts/cluster_training.py --config configs/cluster_training.yaml
+python scripts/cluster_training.py --config configs/cluster_training.yaml
