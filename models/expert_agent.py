@@ -77,7 +77,7 @@ class ExpertAgent:
             datapoint_id = uid
             self.training_data_freq[datapoint_id] += 1
 
-    def save(self, base_save_dir: Optional[str]):
+    def save(self, base_save_dir: Optional[str]=None):
         """Save the adapter and the training data statistics."""
         agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.get_relative_save_dir())
         os.makedirs(agent_save_dir, exist_ok=True)
@@ -95,14 +95,16 @@ class ExpertAgent:
         if self.adapter.verbose:
             print(f"[ExpertAgent] Saved training data frequency to {freq_path}.")
 
-    def load(self):
+    def load(self, base_save_dir: Optional[str] = None):
         """Load the adapter and the training data statistics."""
+        # Compute the agent's save directory
+        agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.get_relative_save_dir())
+
         # Load adapter
-        self.adapter.load()
+        self.adapter.load(agent_save_dir)
 
         # Load training data frequency
-        save_dir = self.adapter.get_save_dir()
-        freq_path = os.path.join(save_dir, "training_data_freq.json")
+        freq_path = os.path.join(agent_save_dir, "training_data_freq.json")
 
         if os.path.isfile(freq_path):
             with open(freq_path, "r") as f:

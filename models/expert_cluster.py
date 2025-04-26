@@ -5,7 +5,7 @@ The base model is in control of the expert cluster, and the agent only provide a
 """
 
 import random
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from peft import PeftConfig, PeftModel, peft_model
 import torch
@@ -59,8 +59,11 @@ class ExpertCluster:
         index = [i for (i,_) in enumerate(perplexities)]
         return random.choices(index, weights=probs, k=1)[0]
 
-    def save_all_experts(self,):
+    def save_all_experts(self, base_save_dir):
         """save all expert's adapter"""
         for exp in self.experts:
-            exp.save()
+            exp.save(base_save_dir)
 
+    def load_all_experts(self, base_dir: Optional[str] =None):
+        for exp in self.experts:
+            exp.load(base_dir)

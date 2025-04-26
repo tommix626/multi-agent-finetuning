@@ -12,6 +12,8 @@ The Trainer manages:
 """
 
 from dataclasses import dataclass, asdict
+import json
+import os
 from typing import Optional, List
 
 import torch
@@ -34,6 +36,7 @@ class TrainerConfig:
     device: str = "cuda"
     callbacks: Optional[List[Callback]] = None
     selection_temperature: float = 1.0
+    trainer_id: str = "default-trainer"
 
     def expert_cluster_kwargs(self) -> dict:
         """Return arguments relevant for initializing ExpertCluster."""
@@ -76,6 +79,7 @@ class ExpertTrainer:
         self.callbacks = self.config.callbacks or []
         self.metrics = {}
         self.device = self.config.device
+        self.trainer_id = self.config.trainer_id
 
     def train(self):
         print("[Trainer] Starting training...")
@@ -113,13 +117,81 @@ class ExpertTrainer:
             print(f"[Trainer] Epoch {epoch + 1} complete. Avg Loss: {avg_loss:.4f}")
             self._trigger_callbacks("on_epoch_end")
 
+            self._save_checkpoint(epoch)
+
             # Early stopping check
             if any(cb.should_stop for cb in self.callbacks if hasattr(cb, 'should_stop')):
                 print("[Trainer] Training halted early from callback signal.")
                 break
 
         self._trigger_callbacks("on_train_end")
-        self.expert_cluster.save_all_experts()
+
+    def _save_checkpoint(self, epoch: int):
+        """Save training state after an epoch."""
+        # create folder for this
+        base_save_dir = f"checkpoints/{self.trainer_id}-epoch-{epoch}"
+        os.makedirs(base_save_dir, exist_ok=True)
+        
+        # Save all experts
+        self.expert_cluster.save_all_experts(base_save_dir)
+
+        # Save trainer-level metrics
+        trainer_state = {
+            "epoch": epoch,
+            "metrics": self.metrics,
+        }
+
+        with open(os.path.join(base_save_dir, "trainer_state.json"), "w") as f:
+            json.dump(trainer_state, f, indent=2)
+
+    def _load_checkpoint(self):
+        """Load training state and experts from latest available checkpoint."""
+        # Find the latest checkpoint folder
+        checkpoints_root = "checkpoints"
+        if not os.path.exists(checkpoints_root):
+            print("[Trainer] No checkpoints directory found. Starting fresh.")
+            self.start_epoch = 0
+            return
+
+        # List all folders matching this trainer ID
+        checkpoint_dirs = [
+            d for d in os.listdir(checkpoints_root)
+            if d.startswith(self.trainer_id)
+        ]
+
+        if not checkpoint_dirs:
+            print("[Trainer] No matching checkpoint folders found. Starting fresh.")
+            self.start_epoch = 0
+            return
+
+        # Sort checkpoints by epoch number
+        def extract_epoch(folder_name: str) -> int:
+            try:
+                return int(folder_name.split("-epoch-")[-1])
+            except Exception:
+                return -1  # In case folder name is weird
+
+        checkpoint_dirs = sorted(checkpoint_dirs, key=extract_epoch)
+        latest_checkpoint = checkpoint_dirs[-1]
+        latest_checkpoint_path = os.path.join(checkpoints_root, latest_checkpoint)
+
+        print(f"[Trainer] Found checkpoint '{latest_checkpoint}'. Resuming from there.")
+
+        # Load all experts
+        self.expert_cluster.load_all_experts(latest_checkpoint_path)
+
+        # Load trainer state
+        trainer_state_path = os.path.join(latest_checkpoint_path, "trainer_state.json")
+        if os.path.exists(trainer_state_path):
+            with open(trainer_state_path, "r") as f:
+                trainer_state = json.load(f)
+
+            self.start_epoch = trainer_state.get("epoch", 0) + 1  # Resume from next epoch
+            self.metrics = trainer_state.get("metrics", {})
+            print(f"[Trainer] Loaded trainer state. Resuming from epoch {self.start_epoch}.")
+        else:
+            print("[Trainer] No trainer_state.json found. Starting from epoch 0.")
+            self.start_epoch = 0
 
     def _trigger_callbacks(self, hook_name: str):
         for cb in self.callbacks:
