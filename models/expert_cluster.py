@@ -53,9 +53,14 @@ class ExpertCluster:
         """delegation strategy for which expert to train on
     should incorporate some regularization (randomness). As per Daniel's suggestion.
         """
-        perplexities = [-p for p in perplexities]
         perplexity_tensor = torch.tensor(perplexities)
         scores = -perplexity_tensor / self.selection_temperature
+        probs = torch.softmax(scores, dim=0).tolist()
         index = [i for (i,_) in enumerate(perplexities)]
-        return random.choices(index, perplexities)[0]
+        return random.choices(index, weights=probs, k=1)[0]
+
+    def save_all_experts(self,):
+        """save all expert's adapter"""
+        for exp in self.experts:
+            exp.save()
 

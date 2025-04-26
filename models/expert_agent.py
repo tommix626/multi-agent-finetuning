@@ -1,3 +1,5 @@
+import json
+import os
 from peft import PeftConfig, PeftModel
 import torch
 from transformers.models.auto.tokenization_auto import AutoTokenizer
@@ -59,9 +61,6 @@ class ExpertAgent:
         
         return loss
 
-
-
-
     def reset_adapter(self):
         """Reset adapter weights (e.g., if overfitted)."""
         # fetch the current setting
@@ -77,3 +76,19 @@ class ExpertAgent:
             datapoint_id = uid
             self.training_data_freq[datapoint_id] += 1
 
+    def save(self):
+        """Save the adapter and the training data statistics."""
+        self.adapter.save_adapter()
+
+        # Save training data frequency
+        save_dir = self.adapter.get_save_dir()
+        freq_path = os.path.join(save_dir, "training_data_freq.json")
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        freq_dict = dict(self.training_data_freq)
+        with open(freq_path, "w") as f:
+            json.dump(freq_dict, f, indent=2)
+
+        if self.adapter.verbose:
+            print(f"[ExpertAgent] Saved training data frequency to {freq_path}.")

@@ -119,6 +119,7 @@ class ExpertTrainer:
                 break
 
         self._trigger_callbacks("on_train_end")
+        self.expert_cluster.save_all_experts()
 
     def _trigger_callbacks(self, hook_name: str):
         for cb in self.callbacks:
