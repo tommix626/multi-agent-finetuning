@@ -52,6 +52,12 @@ class ExpertAdapter:
         """Return the directory to save/load this adapter."""
         return os.path.join("checkpoints", self.name)
 
+    def get_relative_save_dir(self) -> str:
+        """Return the directory to save/load this adapter."""
+        return self.name
+
+
+
     def attach_raw(self):
         """Attach a new, randomly initialized LoRA adapter to the base model."""
         self.base_peft_model.add_adapter(self.name, self.peft_config)
@@ -82,10 +88,11 @@ class ExpertAdapter:
             if self.verbose:
                 print(f"[ExpertAdapter] Adapter '{self.name}' was not active. No unload necessary.")
 
-    def save_adapter(self):
+    def save_adapter(self, agent_save_dir: Optional[str]):
         """Save the adapter weights to file."""
-        save_path = self.get_save_dir()
+        save_path = self.get_save_dir() if agent_save_dir is None else agent_save_dir
         os.makedirs(save_path, exist_ok=True)
+
         self.base_peft_model.save_pretrained(save_path)
         if self.verbose:
             print(f"[ExpertAdapter] Saved adapter '{self.name}' to {save_path}.")
