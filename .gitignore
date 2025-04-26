@@ -38,6 +38,8 @@ data/*
 !data/**/*.ipynb
 !data/__init__.py
 
+data/mmlu/mmlu_example.py
+
 # Virtual environments
 .venv/
 .venv
@@ -60,3 +62,4 @@ lightning_logs/
 
 pyrightconfig.json
 **/.jukit/**
+

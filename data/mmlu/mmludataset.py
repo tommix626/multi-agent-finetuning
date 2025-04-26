@@ -58,6 +58,15 @@ class MMLUWrapper:
     def get_test(self):
         return self.dataset["test"]
     
+"""
+Format:
+{
+    'input_ids': tokenized question (plus maybe answer later),
+    'attention_mask': attention mask,
+    'labels': masked labels (only answer tokens supervised),
+    'uid': unique ID
+}
+"""
 class mmluDataset(torch.utils.data.Dataset):
     """
     Dataset for the dataset of BoolQ questions and answers
@@ -106,11 +115,15 @@ class mmluDataset(torch.utils.data.Dataset):
             return_tensors="pt"
         )
 
+        # === Fix: Align label with -100 pad at front ===
+        labels = torch.full((self.max_len,), -100)  # Make labels same size as input_ids
+        labels[:answer_encoding['input_ids'].shape[1]] = answer_encoding['input_ids'][0]
+
         # return Dict[str, torch.Tensor]
         return {
             'input_ids': input_encoding['input_ids'][0], 
             'attention_mask': input_encoding['attention_mask'][0],
-            'labels': answer_encoding['input_ids'][0],  # label is encoded string
+            'labels': labels,
             'uid': uid
         }
     
