@@ -23,4 +23,4 @@ which python
 python --version
 
 # Launch training
-srun python scripts/train_expert_cluster.py --config configs/cluster_training.yaml
+srun python scripts/cluster_training.py --config configs/cluster_training.yaml
