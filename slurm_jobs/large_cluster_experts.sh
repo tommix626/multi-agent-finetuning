@@ -9,7 +9,6 @@
 #SBATCH --mem=32G          # adjust memory if needed
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/expert_trainer_%j.out
-#SBATCH --error=logs/expert_trainer_%j.err
 
 # Load necessary modules
 module load anaconda

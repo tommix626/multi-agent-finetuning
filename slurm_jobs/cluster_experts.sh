@@ -7,7 +7,6 @@
 #SBATCH --mem=16G
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/expert_trainer_%j.out
-#SBATCH --error=logs/expert_trainer_%j.err
 # Load modules
 module load anaconda
 module load cuda/11.6.0
