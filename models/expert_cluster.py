@@ -55,11 +55,13 @@ class ExpertCluster:
     should incorporate some regularization (randomness). As per Daniel's suggestion.
         """
         index = [i for i in range(len(perplexities))]
-        if random.random() < 0.05:
+        epsilon=0.05
+        if random.random() < epsilon:
             print(f"Epsilon greedy, random pick.")
             return random.choice(index)
         perplexity_tensor = torch.tensor(perplexities)
         scores = -perplexity_tensor / self.selection_temperature
+        scores = scores / torch.sum(scores)
         probs = torch.softmax(scores, dim=0).tolist()
         print(f"delegation ppl={perplexities}, scores={scores}, probs={probs}")
 
