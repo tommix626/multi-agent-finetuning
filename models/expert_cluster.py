@@ -78,6 +78,9 @@ class ExpertCluster:
 
     def save_all_experts(self, base_save_dir):
         """save all expert's adapter"""
+        self.peft_model.save_pretrained(base_save_dir)
+
+        # also save the frequency
         for exp in self.experts:
             exp.save(base_save_dir)
 

@@ -93,7 +93,7 @@ class ExpertAdapter:
         save_path = self.get_save_dir() if agent_save_dir is None else agent_save_dir
         os.makedirs(save_path, exist_ok=True)
 
-        self.base_peft_model.save_pretrained(save_path)
+        # self.base_peft_model.save_pretrained(save_path) # FIXME:
         if self.verbose:
             print(f"[ExpertAdapter] Saved adapter '{self.name}' to {save_path}.")
 

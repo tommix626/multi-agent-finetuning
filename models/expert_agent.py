@@ -82,7 +82,7 @@ class ExpertAgent:
         agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.get_relative_save_dir())
         os.makedirs(agent_save_dir, exist_ok=True)
 
-        self.adapter.save_adapter(agent_save_dir)
+        # self.adapter.save_adapter(agent_save_dir)
 
         # Save training data frequency
         freq_path = os.path.join(agent_save_dir, "training_data_freq.json")
