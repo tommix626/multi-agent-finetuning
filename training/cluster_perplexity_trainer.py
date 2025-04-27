@@ -12,7 +12,7 @@ The Trainer manages:
 """
 
 from dataclasses import dataclass, asdict
-import datetime
+from datetime import datetime
 import json
 import os
 import subprocess
@@ -117,7 +117,10 @@ class ExpertTrainer:
 
             # End of epoch
             avg_loss = running_loss / len(self.dataloader)
-            self.metrics['val_loss'] = avg_loss
+            if 'val_loss' in self.metrics.keys():
+                self.metrics['val_loss'].append(avg_loss)
+            else:
+                self.metrics['val_loss'] = [avg_loss]
             print(f"[Trainer] Epoch {epoch + 1} complete. Avg Loss: {avg_loss:.4f}")
             self._trigger_callbacks("on_epoch_end")
 
@@ -130,10 +133,10 @@ class ExpertTrainer:
 
         self._trigger_callbacks("on_train_end")
 
-    def _save_checkpoint(self, epoch: int):
+    def _save_checkpoint(self, epoch: int, extra_folder_id=""):
         """Save training state after an epoch."""
         # create folder for this
-        base_save_dir = f"checkpoints/{self.trainer_id}-epoch-{epoch}"
+        base_save_dir = f"checkpoints/{self.trainer_id}-epoch-{epoch}{extra_folder_id}"
         os.makedirs(base_save_dir, exist_ok=True)
         
         # Save all experts
@@ -156,11 +159,22 @@ class ExpertTrainer:
                 return commit_hash
             except Exception:
                 return None
+        def to_jsonable(obj):
+            """Try to convert an object to a JSON-serializable version."""
+            if isinstance(obj, (str, int, float, bool)) or obj is None:
+                return obj
+            try:
+                json.dumps(obj)  # check if json serializable
+                return obj
+            except (TypeError, OverflowError):
+                return str(obj)  # fallback: store its string version
+        config_dict = vars(self.config)
+        jsonable_config = {k: to_jsonable(v) for k, v in config_dict.items()}
 
         metadata = {
             "trainer_id": self.trainer_id,
             "save_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "training_config": vars(self.config),
+            "training_config": jsonable_config,
             "git_commit": get_git_commit_hash(),
         }
 
