@@ -61,7 +61,7 @@ class ExpertCluster:
         scores = -perplexity_tensor / self.selection_temperature
         probs = torch.softmax(scores, dim=0).tolist()
 
-        self.selection_temperature = max(1,self.selection_temperature / 0.99)
+        self.selection_temperature = max(1,self.selection_temperature * 0.999)
         print(f"[Expert cluster] current delegation temperature {self.selection_temperature}")
         return random.choices(index, weights=probs, k=1)[0]
 
