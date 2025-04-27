@@ -1,13 +1,12 @@
 model_name: "EleutherAI/gpt-neo-125M"
 batch_size: 8
-num_epochs: 3
-num_experts: 4
+num_epochs: 10
+num_experts: 6
 learning_rate: 0.0001
 device: "cuda"
 save_dir: "./checkpoints"
-trainer_id: "multiagent-perplexity-basic"
 lora_r: 8
 lora_alpha: 32
 lora_dropout: 0.1
 selection_temperature: 3.0
-early_stopping_patience: 2
+early_stopping_patience: 5
