@@ -44,7 +44,8 @@ def main():
     learning_rate = config_dict.get("learning_rate", 1e-4)
     device = config_dict.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     save_dir = config_dict.get("save_dir", "./checkpoints")
-    trainer_id = config_dict.get("trainer_id", "default-trainer")
+    default_trainer_id = f"default-{model_name}-batch-{batch_size}-k-{num_experts}-lr-{learning_rate}"
+    trainer_id = config_dict.get("trainer_id", default_trainer_id)
 
     # 2. Define LoRA config
     peft_config = LoraConfig(
