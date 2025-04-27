@@ -13,7 +13,7 @@ import yaml
 
 from peft import LoraConfig, TaskType
 from training.callbacks import ModelCheckpoint, EarlyStopping
-from data.mmlu.mmludataset import pre_process
+from data.mmlu.mmludataset import pre_process, pre_process_data
 from training.cluster_perplexity_trainer import TrainerConfig, ExpertTrainer
 
 def parse_args():
@@ -59,7 +59,7 @@ def main():
 
     # 3. Prepare dataset and base model with PEFT
     print("[Main] Loading data and model...")
-    peft_model, train_loader, _, _ = pre_process(
+    train_loader, dev_loader, test_loader = pre_process_data(
         model_name=model_name,
         batch_size=batch_size,
         device=device,
