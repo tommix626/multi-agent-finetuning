@@ -61,8 +61,6 @@ def main():
     epochs = cfg.get("num_epochs", 3)
     device = cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     cluster_ckpt = cfg["cluster_checkpoint_dir"]  # required
-    save_dir = cfg.get("save_dir", "./checkpoints")
-    trainer_id = cfg.get("trainer_id", "xlora-mixer")
 
     # LoRA config (must match cluster training)
     peft_config = LoraConfig(
@@ -113,17 +111,8 @@ def main():
         layerwise_scalings=cfg.get("layerwise_scalings", True),
         softmax_temperature=cfg.get("softmax_temperature", 1.0),
         top_k_lora=cfg.get("top_k_lora", None),
-        trainer_id=trainer_id
+        base_dir=cluster_ckpt
     )
-
-    # 5. Callbacks
-    callbacks = [
-        ModelCheckpoint(save_dir=save_dir, monitor="eval_loss", mode="min"),
-        EarlyStopping(
-            patience=cfg.get("early_stopping_patience", 2),
-            monitor="eval_loss", mode="min"
-        )
-    ]
 
     # 6. Instantiate and run trainer
     mixer_trainer = XLoraMixerTrainer(

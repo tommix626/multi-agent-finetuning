@@ -29,7 +29,7 @@ class XLoraMixerConfig:
     layerwise_scalings: bool = True
     softmax_temperature: float = 1.0
     top_k_lora: Optional[int] = None
-    trainer_id: str = "xlora-mixer"
+    base_dir: str = None
 
 
 class XLoraMixerTrainer:
@@ -179,7 +179,7 @@ class XLoraMixerTrainer:
         """Save the X-LoRA model and training state."""
         # Create checkpoint directory
         step_suffix = f"-step-{step}" if step is not None else ""
-        save_dir = f"checkpoints/{self.config.trainer_id}-epoch-{epoch}{step_suffix}"
+        save_dir = self.config.base_dir
         os.makedirs(save_dir, exist_ok=True)
         
         # Save the X-LoRA model
@@ -205,7 +205,6 @@ class XLoraMixerTrainer:
         
         # Save metadata
         metadata = {
-            "trainer_id": self.config.trainer_id,
             "save_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "xlora_depth": self.config.xlora_depth,
             "layerwise_scalings": self.config.layerwise_scalings,

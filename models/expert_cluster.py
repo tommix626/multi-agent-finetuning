@@ -37,6 +37,8 @@ class ExpertCluster:
         self.mixer_trained = False
         self.xlora_model = None
 
+        self.base_dir = ""
+
 
     def _setup_peft_model(self, base_model_name: str) -> Tuple[PeftModel, AutoTokenizer]:
         """setup the base model and return the model."""
@@ -87,6 +89,7 @@ class ExpertCluster:
     def load_all_experts(self, base_dir: Optional[str] =None):
         for exp in self.experts:
             exp.load(base_dir)
+        self.base_dir = base_dir
 
     def convert_to_xlora(self, xlora_depth: int = 8, enable_softmax: bool = True, 
                          softmax_temperature: float = 1.0, layerwise_scalings: bool = True):
@@ -103,7 +106,8 @@ class ExpertCluster:
         adapter_paths = {}
         for expert in self.experts:
             adapter_name = expert.adapter.name
-            adapter_path = expert.adapter.get_save_dir()
+            #TODO: adapter path is path-to-base-dir/adapter_name
+            adapter_path = ""
             adapter_paths[adapter_name] = adapter_path
             print(f"[Expert Cluster] Adding adapter {adapter_name} from {adapter_path}")
         

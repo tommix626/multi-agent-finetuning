@@ -52,7 +52,7 @@ class ExpertAdapter:
         """Return the directory to save/load this adapter."""
         return os.path.join("checkpoints", self.name)
 
-    def get_relative_save_dir(self) -> str:
+    def get_checkpoint_save_dir(self) -> str:
         """Return the directory to save/load this adapter."""
         return self.name
 
