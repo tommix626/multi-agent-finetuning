@@ -170,3 +170,36 @@ def pre_process(model_name, batch_size, device, peft_config=None):
     pretrained_model.to(device)
 
     return pretrained_model, train_dataloader, validation_dataloader, test_dataloader
+
+ 
+def pre_process_data(model_name, batch_size, device, peft_config=None):
+    # download dataset
+    print("Loading the dataset ...")
+    mmlu_wrapper = MMLUWrapper()
+    dataset = mmlu_wrapper.get_dataset()
+
+    print("Loding the data into DS...")
+    dataset_train = dataset['train']
+    dataset_dev = dataset['dev']
+    dataset_test = dataset['test']
+
+    print("Loading the tokenizer...")
+    mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    mytokenizer.pad_token = mytokenizer.eos_token  # for generation
+
+    max_len = 512
+
+    print(" >>>>>>>> Initializing the data loaders ... ")
+    train_dataloader = DataLoader(
+        mmluDataset(dataset_train, mytokenizer, max_len),
+        batch_size=batch_size,
+    )
+    validation_dataloader = DataLoader(
+        mmluDataset(dataset_dev, mytokenizer, max_len),
+        batch_size=batch_size
+    )
+    test_dataloader = DataLoader(
+        mmluDataset(dataset_test, mytokenizer, max_len),
+        batch_size=batch_size
+    )
+    return train_dataloader, validation_dataloader, test_dataloader
