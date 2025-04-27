@@ -26,8 +26,8 @@ class ExpertCluster:
         self.peft_model, self.tokenizer = base_model, tokenizer
         # self.peft_model, eself.tokenizer = self._setup_peft_model(base_model_name)
         self.device = device
-        #TODO: load the correct model name
-        self.base_model_name = ""
+        self.base_model_name = base_model.base_model.name_or_path
+        print("base model name: ", self.base_model_name)
 
         self.experts: List[ExpertAgent] = []
         self._init_agent(num_experts)
@@ -99,7 +99,7 @@ class ExpertCluster:
         # Get paths to all expert adapters
         adapter_paths = {}
         for expert in self.experts:
-            adapter_name = f"expert_{expert.id}"
+            adapter_name = expert.adapter.name
             adapter_path = expert.adapter.get_save_dir()
             adapter_paths[adapter_name] = adapter_path
             print(f"[Expert Cluster] Adding adapter {adapter_name} from {adapter_path}")
