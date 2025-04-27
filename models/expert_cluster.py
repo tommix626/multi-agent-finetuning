@@ -47,6 +47,7 @@ class ExpertCluster:
     def delegate_to_expert(self, batch:dict) -> ExpertAgent:
         perplexities = [exp.compute_perplexity(batch) for exp in self.experts]
         chosen_expert_id = self._select(perplexities)
+        print(f"[Expert cluster] deledate to expert {self.experts[chosen_expert_id].adapter.name}")
         return self.experts[chosen_expert_id]
 
     def _select(self, perplexities: List[float]) -> int:
