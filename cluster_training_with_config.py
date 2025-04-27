@@ -2,6 +2,7 @@
 Training script for Expert Clustering with PEFT.
 Supports loading hyperparameters from YAML or JSON config files.
 """
+print(f"Main script starting...")
 
 import argparse
 import json
