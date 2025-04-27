@@ -15,6 +15,7 @@ from dataclasses import dataclass, asdict
 import datetime
 import json
 import os
+import subprocess
 from typing import Optional, List
 
 import torch
@@ -56,11 +57,14 @@ class ExpertTrainer:
         self.config = training_config
         self.dataloader = dataloader
         self.peft_config = peft_config
+        self.device = self.config.device
 
         # Model and tokenizer setup
         base_model = AutoModelForCausalLM.from_pretrained(self.config.model_name)
         self.peft_base_model = get_peft_model(base_model, self.peft_config)
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+
+        self.peft_base_model = self.peft_base_model.to(self.device)
 
         # Expert cluster setup
         self.expert_cluster = ExpertCluster(
@@ -79,7 +83,6 @@ class ExpertTrainer:
         # Callbacks and metrics
         self.callbacks = self.config.callbacks or []
         self.metrics = {}
-        self.device = self.config.device
         self.trainer_id = self.config.trainer_id
 
     def train(self):
@@ -144,11 +147,21 @@ class ExpertTrainer:
 
         with open(os.path.join(base_save_dir, "trainer_state.json"), "w") as f:
             json.dump(trainer_state, f, indent=2)
+        
+        # NOTE: Save metadata
+        def get_git_commit_hash() -> Optional[str]:
+            """Return the current Git commit hash, or None if not inside a Git repository."""
+            try:
+                commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+                return commit_hash
+            except Exception:
+                return None
 
         metadata = {
             "trainer_id": self.trainer_id,
             "save_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "training_config": vars(self.config),  # safe because TrainerConfig is a dataclass
+            "training_config": vars(self.config),
+            "git_commit": get_git_commit_hash(),
         }
 
         with open(os.path.join(base_save_dir, "metadata.json"), "w") as f:
