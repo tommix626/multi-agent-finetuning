@@ -60,8 +60,8 @@ class ExpertCluster:
             print(f"Epsilon greedy, random pick.")
             return random.choice(index)
         perplexity_tensor = torch.tensor(perplexities)
-        scores = -perplexity_tensor / self.selection_temperature
-        scores = scores / torch.sum(scores)
+        scores = -perplexity_tensor
+        scores = scores / torch.sum(scores) * 5/self.selection_temperature # normalize to sum to 5/temp
         probs = torch.softmax(scores, dim=0).tolist()
         print(f"delegation ppl={perplexities}, scores={scores}, probs={probs}")
 
