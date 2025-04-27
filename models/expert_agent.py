@@ -19,7 +19,7 @@ class ExpertAgent:
         self.adapter = ExpertAdapter(self.peft_model, adapter_config, f"adapter_for_expert_{self.id}", tokenizer, device)
 
     def compute_perplexity(self, batch: dict) -> float:
-        """Return perplexity under this adapter."""
+        """Return perplexity under this adapter, scaled by sequence length."""
         self.adapter.activate()
         self.peft_model.eval()
         
@@ -31,15 +31,21 @@ class ExpertAgent:
             outputs = self.peft_model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                labels=labels
+                labels=labels,
+                output_hidden_states=False,
+                output_attentions=False,
+                return_dict=True,
             )
 
-            loss = outputs.loss
-            perplexity = torch.exp(loss).item()
+            loss = outputs.loss  # This is already averaged over tokens
+            
+            # Scale by sequence length
+            num_tokens = attention_mask.sum().item()  # number of non-padding tokens
+            scaled_loss = loss * num_tokens
+
+            perplexity = torch.exp(scaled_loss / num_tokens).item()
 
         return perplexity
-
-
 
     def get_training_loss_on(self, batch: dict, record_training=True):
         """Get training this expert on a single datapoint."""
