@@ -3,7 +3,7 @@ batch_size: 8
 num_epochs: 3
 num_experts: 4
 learning_rate: 0.0001
-device: "cpu"
+device: "cuda"
 save_dir: "./checkpoints"
 trainer_id: "multiagent-perplexity"
 lora_r: 8
