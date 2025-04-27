@@ -9,5 +9,5 @@ trainer_id: "multiagent-perplexity"
 lora_r: 8
 lora_alpha: 32
 lora_dropout: 0.1
-selection_temperature: 1.0
+selection_temperature: 3.0
 early_stopping_patience: 2

@@ -57,6 +57,8 @@ class ExpertCluster:
         scores = -perplexity_tensor / self.selection_temperature
         probs = torch.softmax(scores, dim=0).tolist()
         index = [i for (i,_) in enumerate(perplexities)]
+
+        self.selection_temperature = max(1,self.selection_temperature / 0.99)
         return random.choices(index, weights=probs, k=1)[0]
 
     def save_all_experts(self, base_save_dir):
