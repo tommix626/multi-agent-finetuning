@@ -22,4 +22,4 @@ which python
 python --version
 
 # Launch training
-PYTHONPATH=. python scripts/cluster_training.py --config configs/cluster_training.yaml
+python cluster_training_with_config.py --config configs/cluster_training.yaml
