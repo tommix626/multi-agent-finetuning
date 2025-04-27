@@ -10,6 +10,12 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 from sentence_transformers import SentenceTransformer
 
+import sys
+sys.path.insert(0, "/Users/ruoxiliu/Desktop/NLP-final/multi-agent-finetuning/data/mmlu")
+
+from mmluwrapper import MMLUWrapper
+
+print("1")
 """
 Example Usage:
     # Cluster using TF-IDF on two text files into 5 clusters and save results:

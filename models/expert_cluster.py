@@ -15,19 +15,27 @@ from transformers.models.auto.tokenization_auto import AutoTokenizer
 from models.expert_adapter import ExpertAdapter
 from models.expert_agent import ExpertAgent
 import transformers
+import xlora
+from transformers import AutoConfig
+import os
+import json
 
 class ExpertCluster:
     def __init__(self, base_model: PeftModel, tokenizer:AutoTokenizer, peft_config: PeftConfig, num_experts: int, device: str, selection_temperature:float):
         self.peft_config = peft_config
         self.peft_model, self.tokenizer = base_model, tokenizer
-        # self.peft_model, self.tokenizer = self._setup_peft_model(base_model_name)
+        # self.peft_model, eself.tokenizer = self._setup_peft_model(base_model_name)
         self.device = device
+        #TODO: load the correct model name
+        self.base_model_name = ""
 
         self.experts: List[ExpertAgent] = []
         self._init_agent(num_experts)
 
         self.selection_temperature = selection_temperature
 
+        self.mixer_trained = False
+        self.xlora_model = None
 
 
     def _setup_peft_model(self, base_model_name: str) -> Tuple[PeftModel, AutoTokenizer]:
@@ -42,7 +50,6 @@ class ExpertCluster:
         # init experts
         for i in range(num_agents):
             self.experts.append(ExpertAgent(i, self.peft_model, self.peft_config, self.tokenizer, self.device))  # expert themselves manage the adapter logics.
-
 
     def delegate_to_expert(self, batch:dict) -> ExpertAgent:
         perplexities = [exp.compute_perplexity(batch) for exp in self.experts]
@@ -77,3 +84,96 @@ class ExpertCluster:
     def load_all_experts(self, base_dir: Optional[str] =None):
         for exp in self.experts:
             exp.load(base_dir)
+
+    def convert_to_xlora(self, xlora_depth: int = 8, enable_softmax: bool = True, 
+                         softmax_temperature: float = 1.0, layerwise_scalings: bool = True):
+        """
+        Convert the model to use X-LoRA for mixing experts.
+        This creates a new xlora_model without modifying the existing peft_model.
+        """
+
+        if self.xlora_model is not None:
+            print("[Expert Cluster] Model has already been converted to X-LoRA.")
+            return
+            
+        # Get paths to all expert adapters
+        adapter_paths = {}
+        for expert in self.experts:
+            adapter_name = f"expert_{expert.id}"
+            adapter_path = expert.adapter.get_save_dir()
+            adapter_paths[adapter_name] = adapter_path
+            print(f"[Expert Cluster] Adding adapter {adapter_name} from {adapter_path}")
+        
+        # Convert model to X-LoRA
+        print(f"[Expert Cluster] Converting model to X-LoRA with {len(adapter_paths)} experts")
+        self.xlora_model = xlora.add_xlora_to_model(
+            model=self.peft_model,
+            xlora_config=xlora.xLoRAConfig(
+                hidden_size=self.peft_config.hidden_size,
+                base_model_id=self.base_model_name,
+                xlora_depth=xlora_depth,
+                device=torch.device(self.device),
+                adapters=adapter_paths,
+                enable_softmax=enable_softmax,
+                softmax_temperature=softmax_temperature,
+                layerwise_scalings=layerwise_scalings,
+                # Freeze all adapters and only train the mixer
+                use_trainable_adapters=False
+            ),
+            verbose=True
+        )
+        
+        print("[Expert Cluster] Successfully converted model to X-LoRA")
+    
+    def get_xlora_model(self):
+        """Get the X-LoRA model if available."""
+        if self.xlora_model is None:
+            raise ValueError("Model has not been converted to X-LoRA. Call convert_to_xlora() first.")
+        return self.xlora_model
+    
+    def save_xlora_model(self, save_path: str):
+        """Save the X-LoRA model."""
+        if self.xlora_model is None:
+            raise ValueError("Model has not been converted to X-LoRA. Nothing to save.")
+        
+        os.makedirs(save_path, exist_ok=True)
+        self.xlora_model.save_pretrained(save_path)
+        print(f"[Expert Cluster] Saved X-LoRA model to {save_path}")
+        
+        # Also save a marker that this model has been mixer trained
+        self.mixer_trained = True
+        with open(os.path.join(save_path, "mixer_trained.json"), "w") as f:
+            json.dump({"mixer_trained": True}, f)
+    
+    def load_xlora_model(self, load_path: str):
+        """Load an X-LoRA model."""
+        
+        print(f"[Expert Cluster] Loading X-LoRA model from {load_path}")
+        self.xlora_model = xlora.from_pretrained(
+            load_path,
+            self.peft_model,
+            self.device,
+        )
+        
+        # Check if model was mixer trained
+        mixer_trained_path = os.path.join(load_path, "mixer_trained.json")
+        if os.path.exists(mixer_trained_path):
+            with open(mixer_trained_path, "r") as f:
+                data = json.load(f)
+                self.mixer_trained = data.get("mixer_trained", False)
+        
+        print(f"[Expert Cluster] Successfully loaded X-LoRA model (mixer_trained={self.mixer_trained})")
+    
+    def enable_xlora_logging(self):
+        """Enable logging of expert mixing weights."""
+        if self.xlora_model is None:
+            raise ValueError("Model has not been converted to X-LoRA.")
+        self.xlora_model.enable_scalings_logging()
+        print("[Expert Cluster] Enabled X-LoRA scalings logging")
+    
+    def get_expert_mixing_weights(self):
+        """Get the latest expert mixing weights."""
+        if self.xlora_model is None:
+            raise ValueError("Model has not been converted to X-LoRA.")
+        return self.xlora_model.get_latest_scalings()    
+    
