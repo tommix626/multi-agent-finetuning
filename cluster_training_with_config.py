@@ -58,7 +58,7 @@ def main():
     )
 
     # 3. Prepare dataset and base model with PEFT
-    print("[Main] Loading data and model...")
+    print("[Main] Loading data and model...", flush=True)
     train_loader, _, _ = pre_process_data(
         model_name=model_name,
         batch_size=batch_size,
