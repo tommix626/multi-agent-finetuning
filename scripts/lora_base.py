@@ -12,16 +12,23 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from peft import LoraConfig, TaskType, get_peft_model
 
+# Use a pipeline as a high-level helper
+from transformers import pipeline
+
+pipe = pipeline("text-generation", model="meta-llama/Llama-3.2-1B")
+
+# Load model directly
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+
 import os
 print(os.listdir("/Users/lena/Desktop/multi-agent-finetuning/data/mmlu"))
 
 import sys
 sys.path.insert(0, "/Users/lena/Desktop/multi-agent-finetuning/data/mmlu")
 from mmluwrapper import MMLUWrapper
-
-# Related to BERT
-from transformers import BertConfig
-from transformers.models.bert.modeling_bert import BertEmbeddings
 
 
 class mmluDataset(torch.utils.data.Dataset):
