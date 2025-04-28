@@ -8,76 +8,29 @@ from transformers import get_scheduler
 from transformers import AutoModel, AutoModelForCausalLM
 import argparse
 import subprocess
+import evaluate as evaluate
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from peft import LoraConfig, TaskType, get_peft_model
+import time
 
 # Use a pipeline as a high-level helper
 from transformers import pipeline
 
-pipe = pipeline("text-generation", model="meta-llama/Llama-3.2-1B")
+# pipe = pipeline("text-generation", model="meta-llama/Llama-3.2-1B")
 
 # Load model directly
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+# tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
+# model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
 
 import os
-print(os.listdir("/Users/lena/Desktop/multi-agent-finetuning/data/mmlu"))
+# print(os.listdir("/home/cs601-lwang216/scr4-cs601-dkhasha1/cs601-lwang216/multi-agent-finetuning/data/mmlu"))
 
 import sys
-sys.path.insert(0, "/Users/lena/Desktop/multi-agent-finetuning/data/mmlu")
-from mmluwrapper import MMLUWrapper
-
-
-class mmluDataset(torch.utils.data.Dataset):
-    """
-    Dataset for the dataset of BoolQ questions and answers
-    """
-
-    def __init__(self, data, tokenizer, max_len):
-        self.data = data
-        self.tokenizer = tokenizer
-        self.max_len = max_len
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        """
-        This function is called by the DataLoader to get an instance of the data
-        :param index:
-        :return:
-        """
-
-        example = self.data[index]
-        question = example["question"]
-        subject = example['subject']
-        answer = example['mapped_answer']
-
-
-        # input encoding for your model
-        input_encoding = question
-
-        # encode_plus will encode the input and return a dictionary of tensors
-        encoded_review = self.tokenizer.encode_plus(
-            input_encoding,
-            add_special_tokens=True,
-            max_length=self.max_len,
-            return_token_type_ids=False,
-            return_attention_mask=True,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True
-        )
-        
-        return {
-            'input_ids': encoded_review['input_ids'][0], 
-            'attention_mask': encoded_review['attention_mask'][0],
-            'answer': torch.tensor(answer, dtype=torch.long)  
-        }
-
+sys.path.insert(0, "/home/cs601-lwang216/scr4-cs601-dkhasha1/cs601-lwang216/multi-agent-finetuning/data/mmlu")
+from mmludataset import pre_process, mmluDataset
 
 def evaluate_model(model, dataloader, device):
     """
@@ -97,13 +50,14 @@ def evaluate_model(model, dataloader, device):
     for batch in dataloader:
         input_ids = batch['input_ids'].to(device)
         attention_mask = batch['attention_mask'].to(device)
+        labels = batch["labels"].to(device)
 
         # forward pass
         output = model(input_ids=input_ids, attention_mask=attention_mask)
 
         predictions = output['logits']
         predictions = torch.argmax(predictions, dim=1)
-        dev_accuracy.add_batch(predictions=predictions, references=batch['answer'])
+        dev_accuracy.add_batch(predictions=predictions, references=batch['labels'])
 
     # compute and return metrics
     return dev_accuracy.compute()
@@ -176,18 +130,16 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
             # Hints: similar to the evaluate_model function
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
-            answer = batch['answer'].to(device)
+            labels = batch['labels'].to(device)
             # forward pass
             # name the output as `output`
             # Hints: refer to the evaluate_model function on how to get the predictions (logits)
             # - It's slightly different from the implementation in train of base_classification.py
-            output = mymodel(input_ids=input_ids, attention_mask=attention_mask)
-            predictions = output['logits']
+            output = mymodel(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
             # compute the loss using the loss function
-            l = loss(predictions, answer)
-            # loss backward
-            l.backward()
             # your code ends here
+            loss = output.loss
+            loss.backward()
 
             # update the model parameters depending on the model type
             
@@ -198,7 +150,7 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
             predictions = torch.argmax(predictions, dim=1)
             
             # update metrics
-            train_accuracy.add_batch(predictions=predictions, references=batch['answer'])
+            train_accuracy.add_batch(predictions=predictions, references=batch['labels'])
 
         # print evaluation metrics
         print(f" ===> Epoch {epoch + 1}")
@@ -219,68 +171,23 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
         epoch_end_time = time.time()
         print(f"Epoch {epoch + 1} took {epoch_end_time - epoch_start_time} seconds")
 
-def pre_process(model_name, batch_size, device, type='auto'):
-    # download dataset
-    print("Loading the dataset ...")
-    mmlu_wrapper = MMLUWrapper()
-    dataset = mmlu_wrapper.get_dataset()
-
-    print("Loding the data into DS...")
-    dataset_train = dataset['train']
-    dataset_dev = dataset['dev']
-    dataset_test = dataset['test']
-
-    print("Loading the tokenizer...")
-    mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-    mytokenizer.pad_token = mytokenizer.eos_token # for generation
-
-    max_len = 512
-
-    print(" >>>>>>>> Initializing the data loaders ... ")
-    train_dataloader = DataLoader(
-        mmluDataset(dataset_train, mytokenizer, max_len),
-        batch_size=batch_size,
-    )
-    validation_dataloader = DataLoader(
-        mmluDataset(dataset_dev, mytokenizer, max_len),
-        batch_size=batch_size
-    )
-    test_dataloader = DataLoader(
-        mmluDataset(dataset_test, mytokenizer, max_len),
-        batch_size=batch_size
-    )
-
-    # from Hugging Face (transformers), read their documentation to do this.
-    print("Loading the model ...")
-    pretrained_model = AutoModelForCausalLM.from_pretrained(model_name)    
-    # TODO: Task type currently set as QUESTION_ANS, CHANGE RANK
-    peft_config = LoraConfig(task_type=TaskType.QUESTION_ANS, inference_mode=False, r=6, lora_alpha=32, lora_dropout=0.1, target_modules=["query", "key", "value"])
-    pretrained_model = get_peft_model(pretrained_model, peft_config)
-
-    print("Moving model to device ..." + str(device))
-    pretrained_model.to(device)
-    return pretrained_model, train_dataloader, validation_dataloader, test_dataloader
-
-
 # the entry point of the program
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--small_subset", action='store_true')
     parser.add_argument("--num_epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--model", type=str, default="bert-base-uncased")
+    parser.add_argument("--model", type=str, default="meta-llama/Llama-3.2-3B")
     args = parser.parse_args()
     print(f"Specified arguments: {args}")
 
     assert type(args.small_subset) == bool, "small_subset must be a boolean"
     #load the data and models
-    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(args.model,
-                                                                                             args.batch_size,
-                                                                                             args.device,
-                                                                                             args.small_subset,
-                                                                                            )
+    pretrained_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-3B", torch_dtype=torch.float16)
+    peft_config = LoraConfig(task_type=TaskType.SEQ_CLS, inference_mode=False, r=6, lora_alpha=32, lora_dropout=0.1, target_modules=["q_proj", "k_proj", "v_proj"])
+    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="meta-llama/Llama-3.2-3B", batch_size=4, device="cuda", peft_config=peft_config)  # Pass the LoRA configuration)
     print(" >>>>>>>>  Starting training ... ")
     train(pretrained_model, args.num_epochs, train_dataloader, validation_dataloader, test_dataloader, args.device, args.lr, args.model)
 
