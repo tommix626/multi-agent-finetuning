@@ -99,10 +99,6 @@ def main():
     )
     cluster.load_all_experts(cluster_ckpt)
     cluster.peft_model.to(device)
-    
-    print(f"[Mixer] PEFT base model parameters device: {next(peft_base.parameters()).device}")
-    for exp in cluster.experts:
-        print(f"[Mixer] Adapter '{exp.adapter.name}' intended device: {exp.adapter.device}")
 
     # 4. Mixer training config
     mixer_cfg = XLoraMixerConfig(
@@ -126,8 +122,6 @@ def main():
         dataloader=train_loader,
         eval_dataloader=eval_loader,
     )
-
-    print(f"[Mixer] X-LoRA mixer model parameters device: {next(mixer_trainer.model.parameters()).device}")
 
     mixer_trainer.train()
 

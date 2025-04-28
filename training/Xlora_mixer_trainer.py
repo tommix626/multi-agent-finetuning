@@ -61,9 +61,6 @@ class XLoraMixerTrainer:
         
         self.model = expert_cluster.get_xlora_model()
         self.model.to(self.expert_cluster.device)
-        for name, param in self.model.named_parameters():
-            print(f"{name}: {param.device}")
-        print(f"[XLoraMixerTrainer] xlora_model device: {next(self.model.parameters()).device}")
 
         # Set top-k if specified
         if config.top_k_lora is not None:
@@ -103,7 +100,6 @@ class XLoraMixerTrainer:
             
             for step, batch in enumerate(progress_bar):
                 
-                print("self.expert_cluster.device: ", self.expert_cluster.device)
                 # Forward pass through the X-LoRA model
                 outputs = self.model(
                     input_ids=batch["input_ids"].to(self.expert_cluster.device),
@@ -141,7 +137,6 @@ class XLoraMixerTrainer:
             avg_loss = running_loss / len(self.dataloader)
             self.metrics["train_loss"].append(avg_loss)
             print(f"[XLoraMixerTrainer] Epoch {epoch + 1} complete. Avg Loss: {avg_loss:.4f}")
-            
             # Evaluate if evaluation dataloader is available
             if self.eval_dataloader is not None:
                 eval_loss = self._evaluate()
