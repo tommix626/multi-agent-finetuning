@@ -123,10 +123,13 @@ class XLoraMixerTrainer:
                 
                 # Optional: visualize expert weights periodically
                 if step % self.config.eval_steps == 0:
-                    weights = self.expert_cluster.get_expert_mixing_weights()
-                    if weights is not None:
-                        expert_weights = weights.mean(dim=(0, 1, 2))
-                        print(f"Expert mixing weights: {expert_weights}")
+                    try:
+                        weights = self.expert_cluster.get_expert_mixing_weights()
+                        if weights is not None:
+                            expert_weights = weights.mean(dim=(0, 1, 2))
+                            print(f"Expert mixing weights: {expert_weights}")
+                    except (AttributeError, ValueError) as e:
+                        print(f"[Warning] Could not retrieve expert weights: {e}")
                 
                 # Save checkpoint if needed
                 if step > 0 and step % self.config.save_steps == 0:
