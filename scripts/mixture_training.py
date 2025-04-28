@@ -24,7 +24,6 @@ from transformers.models.auto.tokenization_auto import AutoTokenizer
 from data.mmlu.mmludataset import pre_process_data
 from models.expert_cluster import ExpertCluster
 from training.Xlora_mixer_trainer import XLoraMixerConfig, XLoraMixerTrainer
-from training.callbacks import ModelCheckpoint, EarlyStopping
 
 
 def parse_args():
@@ -85,6 +84,7 @@ def main():
     # 2. Instantiate PEFT base model and tokenizer
     print("[Mixer] Loading base model and adapters...")
     base_model = AutoModelForCausalLM.from_pretrained(model_name)
+    base_model.config.use_cache = False       
     peft_base = get_peft_model(base_model, peft_config).to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -98,6 +98,11 @@ def main():
         selection_temperature=cfg.get("selection_temperature", 1.0)
     )
     cluster.load_all_experts(cluster_ckpt)
+    cluster.peft_model.to(device)
+    
+    print(f"[Mixer] PEFT base model parameters device: {next(peft_base.parameters()).device}")
+    for exp in cluster.experts:
+        print(f"[Mixer] Adapter '{exp.adapter.name}' intended device: {exp.adapter.device}")
 
     # 4. Mixer training config
     mixer_cfg = XLoraMixerConfig(
@@ -120,10 +125,11 @@ def main():
         expert_cluster=cluster,
         dataloader=train_loader,
         eval_dataloader=eval_loader,
-        callbacks=callbacks
     )
-    mixer_trainer.train()
 
+    print(f"[Mixer] X-LoRA mixer model parameters device: {next(mixer_trainer.model.parameters()).device}")
+
+    mixer_trainer.train()
 
 if __name__ == "__main__":
     main()

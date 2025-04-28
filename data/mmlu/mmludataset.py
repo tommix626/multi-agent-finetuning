@@ -179,7 +179,7 @@ def pre_process_data(model_name, batch_size, device, peft_config=None):
     dataset = mmlu_wrapper.get_dataset()
 
     print("Loding the data into DS...")
-    dataset_train = dataset['train'] #.select(range(30))  # FIXME: temp fix for debug
+    dataset_train = dataset['train'].select(range(30))  # FIXME: temp fix for debug
     print("training data",dataset_train)
     dataset_dev = dataset['dev']
     dataset_test = dataset['test']

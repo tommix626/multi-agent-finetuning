@@ -8,3 +8,5 @@ sentence-transformers
 torch
 transformers
 peft
+tqdm
+PyYAML

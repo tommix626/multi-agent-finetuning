@@ -106,20 +106,20 @@ class ExpertCluster:
         adapter_paths = {}
         for expert in self.experts:
             adapter_name = expert.adapter.name
-            #TODO: adapter path is path-to-base-dir/adapter_name
-            adapter_path = ""
+            adapter_path = os.path.join(self.base_dir, expert.adapter.name)
             adapter_paths[adapter_name] = adapter_path
             print(f"[Expert Cluster] Adding adapter {adapter_name} from {adapter_path}")
         
         # Convert model to X-LoRA
         print(f"[Expert Cluster] Converting model to X-LoRA with {len(adapter_paths)} experts")
+        model_hidden_size = self.peft_model.base_model.config.hidden_size
         self.xlora_model = xlora.add_xlora_to_model(
             model=self.peft_model,
             xlora_config=xlora.xLoRAConfig(
-                hidden_size=self.peft_config.hidden_size,
+                hidden_size=model_hidden_size,
                 base_model_id=self.base_model_name,
                 xlora_depth=xlora_depth,
-                device=torch.device(self.device),
+                device=torch.device("cuda"),
                 adapters=adapter_paths,
                 enable_softmax=enable_softmax,
                 softmax_temperature=softmax_temperature,
@@ -129,8 +129,9 @@ class ExpertCluster:
             ),
             verbose=True
         )
-        
+        self.xlora_model = self.xlora_model.to(torch.device(self.device))
         print("[Expert Cluster] Successfully converted model to X-LoRA")
+        print(f"[Expert Cluster] x-lora model device: {next(self.xlora_model.parameters()).device}")
     
     def get_xlora_model(self):
         """Get the X-LoRA model if available."""
@@ -161,7 +162,8 @@ class ExpertCluster:
             self.peft_model,
             self.device,
         )
-        
+        self.xlora_model = self.xlora_model.to(torch.device(self.device))
+
         # Check if model was mixer trained
         mixer_trained_path = os.path.join(load_path, "mixer_trained.json")
         if os.path.exists(mixer_trained_path):

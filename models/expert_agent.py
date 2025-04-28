@@ -98,7 +98,7 @@ class ExpertAgent:
     def load(self, base_save_dir: Optional[str] = None):
         """Load the adapter and the training data statistics."""
         # Compute the agent's save directory
-        agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.get_relative_save_dir())
+        agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.name)
 
         # Load adapter
         self.adapter.load(agent_save_dir)

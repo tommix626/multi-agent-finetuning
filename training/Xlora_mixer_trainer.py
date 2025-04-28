@@ -44,13 +44,11 @@ class XLoraMixerTrainer:
         expert_cluster: ExpertCluster,
         dataloader: DataLoader,
         eval_dataloader: Optional[DataLoader] = None,
-        callbacks: Optional[List[Any]] = None
     ):
         self.config = config
         self.expert_cluster = expert_cluster
         self.dataloader = dataloader
         self.eval_dataloader = eval_dataloader
-        self.callbacks = callbacks or []
         
         # Ensure expert cluster has been converted to X-LoRA
         if not hasattr(expert_cluster, 'xlora_model') or expert_cluster.xlora_model is None:
@@ -62,7 +60,11 @@ class XLoraMixerTrainer:
             )
         
         self.model = expert_cluster.get_xlora_model()
-        
+        self.model.to(self.expert_cluster.device)
+        for name, param in self.model.named_parameters():
+            print(f"{name}: {param.device}")
+        print(f"[XLoraMixerTrainer] xlora_model device: {next(self.model.parameters()).device}")
+
         # Set top-k if specified
         if config.top_k_lora is not None:
             self.model.set_topk_lora(config.top_k_lora)
@@ -87,6 +89,7 @@ class XLoraMixerTrainer:
         # Enable logging if requested
         if config.log_scalings:
             self.expert_cluster.enable_xlora_logging()
+
     
     def train(self):
         """Train the X-LoRA mixer."""
@@ -94,14 +97,13 @@ class XLoraMixerTrainer:
         
         for epoch in range(self.config.epochs):
             print(f"\nEpoch {epoch + 1}/{self.config.epochs}")
-            self._trigger_callbacks("on_epoch_start")
             
             running_loss = 0.0
             progress_bar = tqdm(self.dataloader, desc=f"Epoch {epoch + 1}")
             
             for step, batch in enumerate(progress_bar):
-                self._trigger_callbacks("on_batch_start")
                 
+                print("self.expert_cluster.device: ", self.expert_cluster.device)
                 # Forward pass through the X-LoRA model
                 outputs = self.model(
                     input_ids=batch["input_ids"].to(self.expert_cluster.device),
@@ -134,7 +136,6 @@ class XLoraMixerTrainer:
                 if step > 0 and step % self.config.save_steps == 0:
                     self._save_checkpoint(epoch, step)
                 
-                self._trigger_callbacks("on_batch_end")
             
             # End of epoch
             avg_loss = running_loss / len(self.dataloader)
@@ -149,11 +150,9 @@ class XLoraMixerTrainer:
             
             # Save checkpoint at end of epoch
             self._save_checkpoint(epoch)
-            self._trigger_callbacks("on_epoch_end")
         
         # End of training
         print("[XLoraMixerTrainer] Training complete!")
-        self._trigger_callbacks("on_train_end")
     
     def _evaluate(self):
         """Evaluate the model on the evaluation dataloader."""
@@ -217,9 +216,3 @@ class XLoraMixerTrainer:
         
         print(f"[XLoraMixerTrainer] Saved checkpoint to {save_dir}")
     
-    def _trigger_callbacks(self, hook_name: str):
-        """Trigger callbacks for the given hook."""
-        for cb in self.callbacks:
-            hook = getattr(cb, hook_name, None)
-            if callable(hook):
-                hook(self)
