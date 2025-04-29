@@ -43,6 +43,7 @@ def main():
     # 2) Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, use_fast=False)
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"       # CHANGED: ensure left-padding for decoder-only model
 
     try:
         # 3) Load base model directly to device if CUDA available
@@ -74,7 +75,7 @@ def main():
             model=base_model,
             adapters=adapter_paths,   # explicit dict so adapters ≠ None
             device=DEVICE,
-            verbose=True,  # Enable verbose mode to see loading progress
+            verbose=True,             # Enable verbose mode to see loading progress
         )
         print("X-LoRA model loaded successfully")
 
@@ -114,8 +115,10 @@ def main():
 
                 # greedy generate up to 50 tokens
                 gen_ids = xlo_model.generate(
-                    input_ids,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,                               # CHANGED: pass attention mask
                     max_new_tokens=50,
+                    max_length=input_ids.shape[1] + 50,                          # CHANGED: override default max_length
                     pad_token_id=tokenizer.eos_token_id
                 )
                 prompt_len = input_ids.size(1)
