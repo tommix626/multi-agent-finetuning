@@ -74,7 +74,7 @@ def evaluate_model(model, dataloader, device):
         predictions = torch.argmax(shift_logits, dim=-1)
         mask = shift_labels != -100
         correct = (predictions == shift_labels) & mask
-        total_correct += correct.sum
+        total_correct += correct.sum().item()
 
     avg_loss = total_loss / total_tokens
     perplexity = torch.exp(torch.tensor(avg_loss)).item()
