@@ -11,4 +11,4 @@ lora_alpha: 32
 lora_dropout: 0.1
 selection_temperature: 3.0
 early_stopping_patience: 2
-cluster_checkpoint_dir: /home/rliu79/test/multi-agent-finetuning/checkpoints/low-mi-temp-epoch-9
+cluster_checkpoint_dir: /home/rliu79/test/multi-agent-finetuning/checkpoints/low-mi-temp-epoch-0-best

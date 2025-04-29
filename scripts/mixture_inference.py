@@ -23,7 +23,7 @@ from mmludataset import pre_process_data
 
 def main():
     # 1) Config
-    CHECKPOINT_DIR = "/home/rliu79/test/multi-agent-finetuning/checkpoints/low-mi-temp-epoch-9"
+    CHECKPOINT_DIR = "./checkpoints/low-mi-temp-epoch-9-mixed"
     BASE_MODEL_ID  = "EleutherAI/gpt-neo-125M"
     DEVICE         = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     BATCH_SIZE     = 4  # Reduced from 8
