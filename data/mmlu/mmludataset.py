@@ -1,8 +1,8 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
-from datasets import load_dataset, DatasetDict
+from torch.utils.data import DataLoader
+from datasets import load_dataset, DatasetDict, concatenate_datasets
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import get_peft_model, LoraConfig, TaskType
+from peft import get_peft_model
 
 
 # trainset is for part1 (clustering and fine-tuning)
@@ -10,27 +10,40 @@ from peft import get_peft_model, LoraConfig, TaskType
 # testset is for evaluation after part2 (overall evaluation)
 
 class MMLUWrapper:
-    def __init__(self, seed=42, test_size=0.2):
+    def __init__(self, seed=42, expert_test_size=0.2, mixer_train_size=0.6, mixer_dev_size=0.2, mixer_test_size=0.2):
         self.seed = seed
-        self.test_size = test_size
+        self.expert_test_size = expert_test_size
+        self.mixer_train_size = mixer_train_size
+        self.mixer_dev_size = mixer_dev_size
+        self.mixer_test_size = mixer_test_size
         self.dataset = self._load_and_process()
 
     def _load_and_process(self):
         raw = load_dataset("cais/mmlu", "all")
 
-        train_set = self._map_choices_to_answer(raw["test"], "train")
-        #aux_data = self._map_choices_to_answer(raw["auxiliary_train"], "aux")
+        expert_split = raw["test"].train_test_split(test_size=self.expert_test_size, seed=self.seed)
 
-        aux_split = raw["auxiliary_train"].train_test_split(
-            test_size=self.test_size, seed=self.seed
-        )
-        dev_set = self._map_choices_to_answer(aux_split["train"], "dev")
-        test_set = self._map_choices_to_answer(aux_split["test"], "test")
+        train_expert = self._map_choices_to_answer(expert_split["train"], "train_expert")
+        dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
+
+        mixer_split = raw["auxiliary_train"].train_test_split(test_size=1.0 - self.mixer_train_size, seed=self.seed)
+        mixer_dev_test_split = mixer_split["test"].train_test_split(test_size=self.mixer_test_size / (self.mixer_test_size + self.mixer_dev_size), seed=self.seed)
+
+        train_mixer = self._map_choices_to_answer(mixer_split["train"], "dev")
+        dev_mixer = self._map_choices_to_answer(mixer_dev_test_split["train"], "dev_mixer")
+        test_mixer = self._map_choices_to_answer(mixer_dev_test_split["test"], "test_mixer")
+
+        train_full = concatenate_datasets([train_expert, train_mixer])
+        dev_full = concatenate_datasets([dev_expert, dev_mixer])
 
         return DatasetDict({
-            "train": train_set,
-            "dev": dev_set,
-            "test": test_set
+            "train_expert": train_expert,
+            "dev_expert": dev_expert,
+            "train_mixer": train_mixer,
+            "dev_mixer": dev_mixer,
+            "train_full": train_full,
+            "dev_full": dev_full,
+            "test": test_mixer
         })
 
     def _map_choices_to_answer(self, dataset, split_name):
@@ -47,13 +60,19 @@ class MMLUWrapper:
         return self.dataset
 
     def get_splits(self):
-        return self.dataset["train"], self.dataset["dev"], self.dataset["test"]
+        return (self.dataset["train_expert"], self.dataset["dev_expert"],self.dataset["train_mixer"], self.dataset["dev_mixer"], self.dataset["test"])
     
-    def get_train(self):
-        return self.dataset["train"]
+    def get_train_expert(self):
+        return self.dataset["train_expert"]
 
-    def get_dev(self):
-        return self.dataset["dev"]
+    def get_dev_expert(self):
+        return self.dataset["dev_expert"]
+
+    def get_train_mixer(self):
+        return self.dataset["train_mixer"]
+
+    def get_dev_mixer(self):
+        return self.dataset["dev_mixer"]
 
     def get_test(self):
         return self.dataset["test"]
@@ -68,9 +87,6 @@ Format:
 }
 """
 class mmluDataset(torch.utils.data.Dataset):
-    """
-    Dataset for the dataset of BoolQ questions and answers
-    """
 
     def __init__(self, data, tokenizer, max_len):
         self.data = data
@@ -127,22 +143,49 @@ class mmluDataset(torch.utils.data.Dataset):
             'uid': uid
         }
     
-def pre_process(model_name, batch_size, device, peft_config=None):
+def pre_process(model_name, batch_size, device, peft_config=None, mode='expert'):
+    """
+    Loads the MMLU dataset, tokenizer, and model, applies optional PEFT configuration,
+    and returns the model along with train, validation, and test dataloaders.
+
+    Args:
+        model_name (str): HuggingFace model name or path.
+        batch_size (int): Batch size for dataloaders.
+        device (str or torch.device): Device to move the model to.
+        peft_config (optional): PEFT (e.g., LoRA) configuration to apply to the model.
+        mode (str): Which dataset split to use: 'expert', 'mixer', or 'full'.
+
+    Returns:
+        pretrained_model: The (optionally PEFT-modified) model.
+        train_dataloader: Dataloader for training data.
+        validation_dataloader: Dataloader for validation data.
+        test_dataloader: Dataloader for test data.
+    """
     # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
     dataset = mmlu_wrapper.get_dataset()
-
-    print("Loding the data into DS...")
-    dataset_train = dataset['train']
-    dataset_dev = dataset['dev']
-    dataset_test = dataset['test']
 
     print("Loading the tokenizer...")
     mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
     mytokenizer.pad_token = mytokenizer.eos_token  # for generation
 
     max_len = 512
+
+    print(f"Loading the {mode} data into DS...")
+    if mode == "expert":
+        dataset_train = dataset['train_expert']
+        dataset_dev = dataset['dev_expert']
+    elif mode == "mixer":
+        dataset_train = dataset['train_mixer']
+        dataset_dev = dataset['dev_mixer']
+    elif mode == "full":
+        dataset_train = dataset['train_full']
+        dataset_dev = dataset['dev_full']
+    else:
+        raise ValueError(f"Unknown mode '{mode}'. Expected 'expert' or 'mixer'.")
+
+    dataset_test = dataset['test']
 
     print(" >>>>>>>> Initializing the data loaders ... ")
     train_dataloader = DataLoader(
@@ -172,23 +215,54 @@ def pre_process(model_name, batch_size, device, peft_config=None):
     return pretrained_model, train_dataloader, validation_dataloader, test_dataloader
 
  
-def pre_process_data(model_name, batch_size, device, peft_config=None):
+def pre_process_data(model_name, batch_size, device, peft_config=None, mode='expert'):
+    """
+    Loads the MMLU dataset and tokenizer, and returns only the train, validation,
+    and test dataloaders (no model loading).
+
+    Args:
+        model_name (str): HuggingFace model name or path.
+        batch_size (int): Batch size for dataloaders.
+        device (str or torch.device): (Not used here, kept for compatibility.)
+        peft_config (optional): (Not used here, kept for compatibility.)
+        mode (str): Which dataset split to use: 'expert', 'mixer', or 'full'.
+
+    Returns:
+        train_dataloader: Dataloader for training data.
+        validation_dataloader: Dataloader for validation data.
+        test_dataloader: Dataloader for test data.
+    """
     # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
     dataset = mmlu_wrapper.get_dataset()
 
-    print("Loding the data into DS...")
-    dataset_train = dataset['train']#.select(range(30))  # FIXME: temp fix for debug
-    print("training data",dataset_train)
-    dataset_dev = dataset['dev']
-    dataset_test = dataset['test']
+    # print("Loding the data into DS...")
+    # dataset_train = dataset['train']#.select(range(30))  # FIXME: temp fix for debug
+    # print("training data",dataset_train)
+    # dataset_dev = dataset['dev']
+    # dataset_test = dataset['test']
 
     print("Loading the tokenizer...")
     mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
     mytokenizer.pad_token = mytokenizer.eos_token  # for generation
 
     max_len = 512
+
+    print(f"Loding the {mode} data into DS...")
+    if mode == "expert":
+        dataset_train = dataset['train_expert']
+        dataset_dev = dataset['dev_expert']
+    elif mode == "mixer":
+        dataset_train = dataset['train_mixer']
+        dataset_dev = dataset['dev_mixer']
+    elif mode == "full":
+        dataset_train = dataset['train_full']
+        dataset_dev = dataset['dev_full']
+    else:
+        raise ValueError(f"Unknown mode {mode}")
+
+    dataset_test = dataset['test']
 
     print(" >>>>>>>> Initializing the data loaders ... ")
     train_dataloader = DataLoader(

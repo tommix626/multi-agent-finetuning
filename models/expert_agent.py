@@ -79,7 +79,7 @@ class ExpertAgent:
 
     def save(self, base_save_dir: Optional[str]=None):
         """Save the adapter and the training data statistics."""
-        agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.get_relative_save_dir())
+        agent_save_dir = self.adapter.get_save_dir() if base_save_dir is None else os.path.join(base_save_dir, self.adapter.name)
         os.makedirs(agent_save_dir, exist_ok=True)
 
         # self.adapter.save_adapter(agent_save_dir)

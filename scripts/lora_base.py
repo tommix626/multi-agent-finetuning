@@ -8,76 +8,29 @@ from transformers import get_scheduler
 from transformers import AutoModel, AutoModelForCausalLM
 import argparse
 import subprocess
+import evaluate as evaluate
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from peft import LoraConfig, TaskType, get_peft_model
+import time
 
 # Use a pipeline as a high-level helper
 from transformers import pipeline
 
-pipe = pipeline("text-generation", model="meta-llama/Llama-3.2-1B")
+# pipe = pipeline("text-generation", model="meta-llama/Llama-3.2-1B")
 
 # Load model directly
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+# tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
+# model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
 
 import os
-print(os.listdir("/Users/lena/Desktop/multi-agent-finetuning/data/mmlu"))
+# print(os.listdir("/home/cs601-lwang216/scr4-cs601-dkhasha1/cs601-lwang216/multi-agent-finetuning/data/mmlu"))
 
 import sys
-sys.path.insert(0, "/Users/lena/Desktop/multi-agent-finetuning/data/mmlu")
-from mmluwrapper import MMLUWrapper
-
-
-class mmluDataset(torch.utils.data.Dataset):
-    """
-    Dataset for the dataset of BoolQ questions and answers
-    """
-
-    def __init__(self, data, tokenizer, max_len):
-        self.data = data
-        self.tokenizer = tokenizer
-        self.max_len = max_len
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        """
-        This function is called by the DataLoader to get an instance of the data
-        :param index:
-        :return:
-        """
-
-        example = self.data[index]
-        question = example["question"]
-        subject = example['subject']
-        answer = example['mapped_answer']
-
-
-        # input encoding for your model
-        input_encoding = question
-
-        # encode_plus will encode the input and return a dictionary of tensors
-        encoded_review = self.tokenizer.encode_plus(
-            input_encoding,
-            add_special_tokens=True,
-            max_length=self.max_len,
-            return_token_type_ids=False,
-            return_attention_mask=True,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True
-        )
-        
-        return {
-            'input_ids': encoded_review['input_ids'][0], 
-            'attention_mask': encoded_review['attention_mask'][0],
-            'answer': torch.tensor(answer, dtype=torch.long)  
-        }
-
+sys.path.insert(0, "/home/cs601-lwang216/scr4-cs601-dkhasha1/cs601-lwang216/multi-agent-finetuning/data/mmlu")
+from mmludataset import pre_process, mmluDataset
 
 def evaluate_model(model, dataloader, device):
     """
@@ -88,7 +41,9 @@ def evaluate_model(model, dataloader, device):
     :return accuracy
     """
     # load metrics
-    dev_accuracy = evaluate.load('accuracy')
+    total_loss = 0.0
+    total_tokens = 0
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='sum')
 
     # turn model into evaluation mode
     model.eval()
@@ -97,19 +52,43 @@ def evaluate_model(model, dataloader, device):
     for batch in dataloader:
         input_ids = batch['input_ids'].to(device)
         attention_mask = batch['attention_mask'].to(device)
+        labels = batch["labels"].to(device)
 
         # forward pass
-        output = model(input_ids=input_ids, attention_mask=attention_mask)
+        output = model(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
 
-        predictions = output['logits']
-        predictions = torch.argmax(predictions, dim=1)
-        dev_accuracy.add_batch(predictions=predictions, references=batch['answer'])
+        logits = output.logits
+
+        # Shift for next token prediction
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+
+        loss = loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        num_tokens = (shift_labels != -100).sum()
+
+        total_loss += loss.item()
+        total_tokens += num_tokens.item()
+
+        # Compute accuracy 
+        predictions = torch.argmax(shift_logits, dim=-1)
+        mask = shift_labels != -100
+        correct = (predictions == shift_labels) & mask
+        total_correct += correct.sum
+
+    avg_loss = total_loss / total_tokens
+    perplexity = torch.exp(torch.tensor(avg_loss)).item()
+    accuracy = total_correct / total_tokens
+
 
     # compute and return metrics
-    return dev_accuracy.compute()
+    return {
+        "loss": avg_loss,
+        "perplexity": perplexity,
+        "accuracy": accuracy
+    }
 
 
-def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dataloder, device, lr, model_name):
+def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dataloder, device, lr, model_name, rank):
     """ Train a PyTorch Module
 
     :param torch.nn.Module mymodel: the model to be trained
@@ -148,119 +127,107 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
         # since we put the model into eval mode during validation)
         mymodel.train()
 
-        # load metrics
-        train_accuracy = evaluate.load('accuracy')
-
         print(f"Epoch {epoch + 1} training:")
+        # Initialize counters
+        total_loss = 0.0
+        total_tokens = 0
+        total_correct = 0
 
         for index, batch in tqdm(enumerate(train_dataloader)):
 
-            """
-            You need to make some changes here to make this function work.
-            Specifically, you need to: 
-            Extract the input_ids, attention_mask, and labels from the batch; then send them to the device. 
-            Then, pass the input_ids and attention_mask to the model to get the logits.
-            Then, compute the loss using the logits and the labels.
-            Then, depending on model.type, you may want to use different optimizers
-            Then, call loss.backward() to compute the gradients.
-            Then, call lr_scheduler.step() to update the learning rate.
-            Then, call optimizer.step()  to update the model parameters.
-            Then, call optimizer.zero_grad() to reset the gradients for the next iteration.
-            Then, compute the accuracy using the logits and the labels.
-            """
-
-            # TODO: implement the training loop
-            # raise NotImplementedError("You need to implement this function")
-
             # get the input_ids, attention_mask, and labels from the batch and put them on the device
             # Hints: similar to the evaluate_model function
+            print(f"Starting batch {index}...")
+
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
-            answer = batch['answer'].to(device)
+            labels = batch['labels'].to(device)
             # forward pass
             # name the output as `output`
             # Hints: refer to the evaluate_model function on how to get the predictions (logits)
             # - It's slightly different from the implementation in train of base_classification.py
-            output = mymodel(input_ids=input_ids, attention_mask=attention_mask)
-            predictions = output['logits']
+            print(f"Batch {index} moved to device... shape: {input_ids.shape}")
+
+            output = mymodel(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
             # compute the loss using the loss function
-            l = loss(predictions, answer)
-            # loss backward
-            l.backward()
             # your code ends here
+            loss = output.loss
+            loss.backward()
 
             # update the model parameters depending on the model type
-            
+            print(f"Batch {index} loss.backward() done")
+
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
+            print(f"Batch {index} optimizer step done")
 
-            predictions = torch.argmax(predictions, dim=1)
-            
+            logits = output.logits
+            predictions = torch.argmax(logits, dim=-1)
+
+            # Flatten prediction and padding tokens
+            predictions = predictions.view(-1)
+            labels = labels.view(-1)
+
+            mask = labels != -100
+            masked_preds = predictions[mask]
+            masked_labels = labels[mask]
+
+            batch_correct = (masked_preds == masked_labels).sum().item()
+            batch_tokens = mask.sum().item()
+
+            total_correct += batch_correct
+            total_tokens += batch_tokens
+
+            total_loss += loss.item() * batch_tokens
+            print("iteration done...")
             # update metrics
-            train_accuracy.add_batch(predictions=predictions, references=batch['answer'])
+            # train_accuracy.add_batch(predictions=predictions, references=labels)
 
         # print evaluation metrics
+        avg_train_loss = total_loss / total_tokens
+        train_perplexity = torch.exp(torch.tensor(avg_train_loss)).item()
+        avg_train_accuracy = total_correct / total_tokens
+
         print(f" ===> Epoch {epoch + 1}")
-        train_acc = train_accuracy.compute()
-        print(f" - Average training metrics: accuracy={train_acc}")
-        train_acc_list.append(train_acc['accuracy'])
+        print(f" - Average Training Loss: {avg_train_loss:.4f}")
+        print(f" - Average Training Perplexity: {train_perplexity:.4f}")
+        print(f" - Average Training Accuracy: {avg_train_accuracy:.4f}")
+        train_acc_list.append(avg_train_accuracy)
 
         # normally, validation would be more useful when training for many epochs
         val_accuracy = evaluate_model(mymodel, validation_dataloader, device)
-        print(f" - Average validation metrics: accuracy={val_accuracy}")
-        dev_acc_list.append(val_accuracy['accuracy'])
+        print(f" - Average DEV metrics: loss={val_accuracy['loss']:.4f}, perplexity={val_accuracy['perplexity']:.4f}")
+        dev_acc_list.append(val_accuracy['loss'])
         
         epoch_list.append(epoch)
         
         test_accuracy = evaluate_model(mymodel, test_dataloader, device)
-        print(f" - Average test metrics: accuracy={test_accuracy}")
+        print(f" - Average test metrics: loss={test_accuracy['loss']:.4f}, perplexity={test_accuracy['perplexity']:.4f}")
+
 
         epoch_end_time = time.time()
         print(f"Epoch {epoch + 1} took {epoch_end_time - epoch_start_time} seconds")
 
-def pre_process(model_name, batch_size, device, type='auto'):
-    # download dataset
-    print("Loading the dataset ...")
-    mmlu_wrapper = MMLUWrapper()
-    dataset = mmlu_wrapper.get_dataset()
+    checkpoint_dir = "./checkpoints"
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_path = os.path.join(checkpoint_dir, f"{model_name.replace('/', '_')}_r={rank}_final.pt")
 
-    print("Loding the data into DS...")
-    dataset_train = dataset['train']
-    dataset_dev = dataset['dev']
-    dataset_test = dataset['test']
+    torch.save({
+        'epoch': num_epochs,
+        'model_state_dict': mymodel.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'lr_scheduler_state_dict': lr_scheduler.state_dict(),
+        'final_train_loss': avg_train_loss,
+        'final_train_perplexity': train_perplexity,
+        'final_train_accuracy': avg_train_accuracy,
+        'final_val_loss': val_accuracy['loss'],
+        'final_val_perplexity': val_accuracy['perplexity'],
+        'final_test_loss': test_accuracy['loss'],
+        'final_test_perplexity': test_accuracy['perplexity'],
+    }, checkpoint_path)
 
-    print("Loading the tokenizer...")
-    mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-    mytokenizer.pad_token = mytokenizer.eos_token # for generation
-
-    max_len = 512
-
-    print(" >>>>>>>> Initializing the data loaders ... ")
-    train_dataloader = DataLoader(
-        mmluDataset(dataset_train, mytokenizer, max_len),
-        batch_size=batch_size,
-    )
-    validation_dataloader = DataLoader(
-        mmluDataset(dataset_dev, mytokenizer, max_len),
-        batch_size=batch_size
-    )
-    test_dataloader = DataLoader(
-        mmluDataset(dataset_test, mytokenizer, max_len),
-        batch_size=batch_size
-    )
-
-    # from Hugging Face (transformers), read their documentation to do this.
-    print("Loading the model ...")
-    pretrained_model = AutoModelForCausalLM.from_pretrained(model_name)    
-    # TODO: Task type currently set as QUESTION_ANS, CHANGE RANK
-    peft_config = LoraConfig(task_type=TaskType.QUESTION_ANS, inference_mode=False, r=6, lora_alpha=32, lora_dropout=0.1, target_modules=["query", "key", "value"])
-    pretrained_model = get_peft_model(pretrained_model, peft_config)
-
-    print("Moving model to device ..." + str(device))
-    pretrained_model.to(device)
-    return pretrained_model, train_dataloader, validation_dataloader, test_dataloader
-
+    print(f"Final model checkpoint saved at {checkpoint_path}")
 
 # the entry point of the program
 if __name__ == "__main__":
@@ -268,24 +235,27 @@ if __name__ == "__main__":
     parser.add_argument("--small_subset", action='store_true')
     parser.add_argument("--num_epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--model", type=str, default="bert-base-uncased")
+    parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-125m")
+    parser.add_argument("--rank", type=int, default=8)
     args = parser.parse_args()
     print(f"Specified arguments: {args}")
 
     assert type(args.small_subset) == bool, "small_subset must be a boolean"
     #load the data and models
-    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(args.model,
-                                                                                             args.batch_size,
-                                                                                             args.device,
-                                                                                             args.small_subset,
-                                                                                            )
+    print("Loading model...")
+    pretrained_model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-125m", torch_dtype=torch.float16)
+    print("initiating peft_config...")
+    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.rank, lora_alpha=32, lora_dropout=0.1, target_modules=["q_proj", "k_proj", "v_proj"])
+    print("Running pre_process...")
+    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=args.batch_size, device="cuda", peft_config=peft_config, mode = 'full')  # Pass the LoRA configuration)
+
     print(" >>>>>>>>  Starting training ... ")
-    train(pretrained_model, args.num_epochs, train_dataloader, validation_dataloader, test_dataloader, args.device, args.lr, args.model)
+    train(pretrained_model, args.num_epochs, train_dataloader, validation_dataloader, test_dataloader, args.device, args.lr, args.model, args.rank)
 
     val_accuracy = evaluate_model(pretrained_model, validation_dataloader, args.device)
-    print(f" - Average DEV metrics: accuracy={val_accuracy}")
+    print(f" - Average DEV metrics: accuracy={val_accuracy['accuracy']}, perplexity={val_accuracy['perplexity']}, loss={val_accuracy['loss']}")
 
     test_accuracy = evaluate_model(pretrained_model, test_dataloader, args.device)
-    print(f" - Average TEST metrics: accuracy={test_accuracy}")
+    print(f" - Average TEST metrics: accuracy={test_accuracy['accuracy']}, perplexity={test_accuracy['perplexity']}, loss={test_accuracy['loss']}")
