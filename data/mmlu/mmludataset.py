@@ -1,8 +1,8 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
-from datasets import load_dataset, DatasetDict
+from torch.utils.data import DataLoader
+from datasets import load_dataset, DatasetDict, concatenate_datasets
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import get_peft_model, LoraConfig, TaskType
+from peft import get_peft_model
 
 
 # trainset is for part1 (clustering and fine-tuning)
@@ -33,11 +33,16 @@ class MMLUWrapper:
         dev_mixer = self._map_choices_to_answer(mixer_dev_test_split["train"], "dev_mixer")
         test_mixer = self._map_choices_to_answer(mixer_dev_test_split["test"], "test_mixer")
 
+        train_full = concatenate_datasets([train_expert, train_mixer])
+        dev_full = concatenate_datasets([dev_expert, dev_mixer])
+
         return DatasetDict({
             "train_expert": train_expert,
             "dev_expert": dev_expert,
             "train_mixer": train_mixer,
             "dev_mixer": dev_mixer,
+            "train_full": train_full,
+            "dev_full": dev_full,
             "test": test_mixer
         })
 
@@ -157,6 +162,9 @@ def pre_process(model_name, batch_size, device, peft_config=None, mode='expert')
     elif mode == "mixer":
         dataset_train = dataset['train_mixer']
         dataset_dev = dataset['dev_mixer']
+    elif mode == "full":
+        dataset_train = dataset['train_full']
+        dataset_dev = dataset['dev_full']
     else:
         raise ValueError(f"Unknown mode '{mode}'. Expected 'expert' or 'mixer'.")
 
@@ -215,6 +223,9 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
     elif mode == "mixer":
         dataset_train = dataset['train_mixer']
         dataset_dev = dataset['dev_mixer']
+    elif mode == "full":
+        dataset_train = dataset['train_full']
+        dataset_dev = dataset['dev_full']
     else:
         raise ValueError(f"Unknown mode {mode}")
 
