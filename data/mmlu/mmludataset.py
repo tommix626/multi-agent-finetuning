@@ -196,19 +196,11 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
     mmlu_wrapper = MMLUWrapper()
     dataset = mmlu_wrapper.get_dataset()
 
-<<<<<<< Updated upstream
     # print("Loding the data into DS...")
     # dataset_train = dataset['train']#.select(range(30))  # FIXME: temp fix for debug
     # print("training data",dataset_train)
     # dataset_dev = dataset['dev']
     # dataset_test = dataset['test']
-=======
-    print("Loding the data into DS...")
-    dataset_train = dataset['train'].select(range(30))  # FIXME: temp fix for debug
-    print("training data",dataset_train)
-    dataset_dev = dataset['dev']
-    dataset_test = dataset['test']
->>>>>>> Stashed changes
 
     print("Loading the tokenizer...")
     mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)

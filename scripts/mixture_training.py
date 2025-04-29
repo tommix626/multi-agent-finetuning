@@ -78,7 +78,8 @@ def main():
         model_name=model_name,
         batch_size=train_bs,
         device=device,
-        peft_config=peft_config
+        peft_config=peft_config,
+        mode='mixer'
     )
 
     # 2. Instantiate PEFT base model and tokenizer

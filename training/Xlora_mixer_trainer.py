@@ -87,6 +87,60 @@ class XLoraMixerTrainer:
         if config.log_scalings:
             self.expert_cluster.enable_xlora_logging()
 
+        self.debug_trainable_parameters()
+        
+    def debug_trainable_parameters(self):
+        """
+        Debug which parameters are trainable in the model.
+        Prints parameter groups and their trainable status.
+        """
+        print("\n======= DEBUGGING TRAINABLE PARAMETERS =======")
+        
+        # Track parameters by type
+        param_stats = {
+            "base_model": {"trainable": 0, "frozen": 0},
+            "lora_adapters": {"trainable": 0, "frozen": 0},
+            "xlora_mixer": {"trainable": 0, "frozen": 0},
+            "other": {"trainable": 0, "frozen": 0}
+        }
+        
+        # Counter for trainable parameter groups
+        trainable_groups = []
+        
+        # Inspect all named parameters
+        for name, param in self.model.named_parameters():
+            param_type = "other"
+            
+            # Categorize the parameter
+            if "xlora" in name.lower() and "adapter" not in name.lower():
+                param_type = "xlora_mixer"
+            elif "lora" in name.lower() or "adapter" in name.lower():
+                param_type = "lora_adapters"
+            elif "base_model" in name.lower():
+                param_type = "base_model"
+            
+            # Count trainable vs frozen parameters
+            if param.requires_grad:
+                param_stats[param_type]["trainable"] += param.numel()
+                trainable_groups.append((name, param.shape, param.numel()))
+            else:
+                param_stats[param_type]["frozen"] += param.numel()
+        
+        # Print summary
+        print("Parameter statistics by component:")
+        for component, stats in param_stats.items():
+            total = stats["trainable"] + stats["frozen"]
+            if total > 0:
+                trainable_percent = 100 * stats["trainable"] / total
+                print(f"  {component}: {stats['trainable']:,}/{total:,} params trainable ({trainable_percent:.2f}%)")
+        
+        # Print detailed list of trainable parameter groups
+        print("\nTrainable parameter groups:")
+        trainable_groups.sort(key=lambda x: x[0])  # Sort by name
+        for name, shape, count in trainable_groups:
+            print(f"  {name}: shape={shape}, params={count:,}")
+        
+        print("============================================\n")
     
     def train(self):
         """Train the X-LoRA mixer."""
