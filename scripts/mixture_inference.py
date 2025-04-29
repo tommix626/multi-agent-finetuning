@@ -70,7 +70,7 @@ def main():
 
         # 4) Collect your expert adapter files
         adapter_paths = {
-            name: os.path.join(CHECKPOINT_DIR, name, "adapter_model.safetensors")  # FIX: point directly to safetensors
+            name: os.path.join(CHECKPOINT_DIR, name)  # FIX: point directly to safetensors
             for name in os.listdir(CHECKPOINT_DIR)
             if name.startswith("adapter_for_expert_")
         }
