@@ -108,14 +108,9 @@ class ExpertCluster:
             adapter_name = expert.adapter.name
             adapter_path = os.path.join(self.base_dir, expert.adapter.name)
             adapter_paths[adapter_name] = adapter_path
-            print(f"[Expert Cluster] Adding adapter {adapter_name} from {adapter_path}")
         
         for param in self.peft_model.parameters():
             param.requires_grad = False
-
-        for expert in self.experts:
-            for param in expert.adapter.parameters():
-                param.requires_grad = False
 
         # Convert model to X-LoRA
         print(f"[Expert Cluster] Converting model to X-LoRA with {len(adapter_paths)} experts")
@@ -136,7 +131,7 @@ class ExpertCluster:
             ),
             verbose=True
         )
-        
+
         # DOUBLE-CHECK: After xlora conversion, explicitly verify and fix any trainable parameters
         # that are not part of the mixer
         total_params = 0
@@ -159,7 +154,6 @@ class ExpertCluster:
         
         self.xlora_model = self.xlora_model.to(torch.device(self.device))
         print("[Expert Cluster] Successfully converted model to X-LoRA")
-        print(f"[Expert Cluster] x-lora model device: {next(self.xlora_model.parameters()).device}")
     
     def get_xlora_model(self):
         """Get the X-LoRA model if available."""

@@ -3,8 +3,8 @@
 #SBATCH --account=a100acct
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
-#SBATCH --partition=gpu
-#SBATCH --mem-per-gpu=11G
+#SBATCH --partition=gpu-a100
+#SBATCH --mem-per-gpu=81G
 #SBATCH --gres=gpu:1
 #SBATCH --output=/home/rliu79/test/multi-agent-finetuning/logs/outputs/1.txt
 #SBATCH --error=/home/rliu79/test/multi-agent-finetuning/logs/errors/1.txt

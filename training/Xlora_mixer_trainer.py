@@ -176,14 +176,14 @@ class XLoraMixerTrainer:
                 })
                 
                 # Optional: visualize expert weights periodically
-                if step % self.config.eval_steps == 0:
+                '''if step % self.config.eval_steps == 0:
                     try:
                         weights = self.expert_cluster.get_expert_mixing_weights()
                         if weights is not None:
                             expert_weights = weights.mean(dim=(0, 1, 2))
                             print(f"Expert mixing weights: {expert_weights}")
                     except (AttributeError, ValueError) as e:
-                        print(f"[Warning] Could not retrieve expert weights: {e}")
+                        print(f"[Warning] Could not retrieve expert weights: {e}")'''
                 
                 # Save checkpoint if needed
                 if step > 0 and step % self.config.save_steps == 0:
@@ -248,11 +248,11 @@ class XLoraMixerTrainer:
             json.dump(trainer_state, f, indent=2)
         
         # Save scalings log if enabled
-        if self.config.log_scalings:
+        '''if self.config.log_scalings:
             try:
                 self.model.flush_log_scalings(os.path.join(save_dir, "scalings_log"))
             except Exception as e:
-                print(f"[XLoraMixerTrainer] Warning: Failed to save scalings log: {e}")
+                print(f"[XLoraMixerTrainer] Warning: Failed to save scalings log: {e}")'''
         
         # Save metadata
         metadata = {
