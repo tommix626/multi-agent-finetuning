@@ -144,6 +144,23 @@ class mmluDataset(torch.utils.data.Dataset):
         }
     
 def pre_process(model_name, batch_size, device, peft_config=None, mode='expert'):
+    """
+    Loads the MMLU dataset, tokenizer, and model, applies optional PEFT configuration,
+    and returns the model along with train, validation, and test dataloaders.
+
+    Args:
+        model_name (str): HuggingFace model name or path.
+        batch_size (int): Batch size for dataloaders.
+        device (str or torch.device): Device to move the model to.
+        peft_config (optional): PEFT (e.g., LoRA) configuration to apply to the model.
+        mode (str): Which dataset split to use: 'expert', 'mixer', or 'full'.
+
+    Returns:
+        pretrained_model: The (optionally PEFT-modified) model.
+        train_dataloader: Dataloader for training data.
+        validation_dataloader: Dataloader for validation data.
+        test_dataloader: Dataloader for test data.
+    """
     # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
@@ -199,6 +216,22 @@ def pre_process(model_name, batch_size, device, peft_config=None, mode='expert')
 
  
 def pre_process_data(model_name, batch_size, device, peft_config=None, mode='expert'):
+    """
+    Loads the MMLU dataset and tokenizer, and returns only the train, validation,
+    and test dataloaders (no model loading).
+
+    Args:
+        model_name (str): HuggingFace model name or path.
+        batch_size (int): Batch size for dataloaders.
+        device (str or torch.device): (Not used here, kept for compatibility.)
+        peft_config (optional): (Not used here, kept for compatibility.)
+        mode (str): Which dataset split to use: 'expert', 'mixer', or 'full'.
+
+    Returns:
+        train_dataloader: Dataloader for training data.
+        validation_dataloader: Dataloader for validation data.
+        test_dataloader: Dataloader for test data.
+    """
     # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
