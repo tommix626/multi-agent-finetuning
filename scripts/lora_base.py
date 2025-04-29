@@ -44,6 +44,7 @@ def evaluate_model(model, dataloader, device):
     total_loss = 0.0
     total_tokens = 0
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='sum')
+    total_correct = 0
 
     # turn model into evaluation mode
     model.eval()
@@ -88,7 +89,7 @@ def evaluate_model(model, dataloader, device):
     }
 
 
-def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dataloder, device, lr, model_name, rank):
+def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dataloder, device, lr, model_name, rank, mode):
     """ Train a PyTorch Module
 
     :param torch.nn.Module mymodel: the model to be trained
@@ -211,7 +212,7 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
 
     checkpoint_dir = "./checkpoints"
     os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(checkpoint_dir, f"{model_name.replace('/', '_')}_r={rank}_final.pt")
+    checkpoint_path = os.path.join(checkpoint_dir, f"{model_name.replace('/', '_')}_r={rank}_mode={mode}_final.pt")
 
     torch.save({
         'epoch': num_epochs,
@@ -239,6 +240,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-125m")
     parser.add_argument("--rank", type=int, default=8)
+    parser.add_argument("--mode", type=str, default='full')
     args = parser.parse_args()
     print(f"Specified arguments: {args}")
 
@@ -249,7 +251,7 @@ if __name__ == "__main__":
     print("initiating peft_config...")
     peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.rank, lora_alpha=32, lora_dropout=0.1, target_modules=["q_proj", "k_proj", "v_proj"])
     print("Running pre_process...")
-    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=args.batch_size, device="cuda", peft_config=peft_config, mode = 'full')  # Pass the LoRA configuration)
+    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=args.batch_size, device="cuda", peft_config=peft_config, mode =args.mode)  # Pass the LoRA configuration)
 
     print(" >>>>>>>>  Starting training ... ")
     train(pretrained_model, args.num_epochs, train_dataloader, validation_dataloader, test_dataloader, args.device, args.lr, args.model, args.rank)
