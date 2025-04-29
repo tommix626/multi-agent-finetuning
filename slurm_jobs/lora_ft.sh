@@ -17,7 +17,8 @@ module load conda
 module load cuda/12.5.0
 
 # Activate your environment
-conda activate final_nlp
+conda activate multi-agent-finetuning
+#final_nlp
 
 # Check if CUDA available
 nvidia-smi || echo "nvidia-smi failed"
@@ -26,4 +27,4 @@ python --version
 python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
 # Launch training
-python ../scripts/lora_base.py --device cuda
+python ../scripts/lora_base.py --device cuda --rank 48

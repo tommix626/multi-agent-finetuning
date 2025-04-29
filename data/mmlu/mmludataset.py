@@ -77,6 +77,24 @@ class MMLUWrapper:
     def get_test(self):
         return self.dataset["test"]
     
+    def get_subject_subset(self, split_name: str, subject: str):
+        """
+        return the data of a subject from a split.
+        """
+        if split_name not in self.dataset:
+            raise ValueError(f"Invalid split name: {split_name}")
+        return self.dataset[split_name].filter(lambda x: x["subject"] == subject)
+
+    # def get_by_uid(self, uid: str):
+    #     """
+    #     Return the example with the given UID from the entire dataset.
+    #     """
+    #     for split in self.dataset:
+    #         result = self.dataset[split].filter(lambda x: x["uid"] == uid)
+    #         if len(result) > 0:
+    #             return result[0]
+    #     raise ValueError(f"UID {uid} not found in any dataset split.")
+    
 """
 Format:
 {
@@ -105,7 +123,7 @@ class mmluDataset(torch.utils.data.Dataset):
 
         example = self.data[index]
         question = example["question"]
-        #subject = example['subject']
+        subject = example['subject']
         answer = example['mapped_answer']
         uid = example["uid"]
 
@@ -143,24 +161,9 @@ class mmluDataset(torch.utils.data.Dataset):
             'uid': uid
         }
     
+
+    
 def pre_process(model_name, batch_size, device, peft_config=None, mode='expert'):
-    """
-    Loads the MMLU dataset, tokenizer, and model, applies optional PEFT configuration,
-    and returns the model along with train, validation, and test dataloaders.
-
-    Args:
-        model_name (str): HuggingFace model name or path.
-        batch_size (int): Batch size for dataloaders.
-        device (str or torch.device): Device to move the model to.
-        peft_config (optional): PEFT (e.g., LoRA) configuration to apply to the model.
-        mode (str): Which dataset split to use: 'expert', 'mixer', or 'full'.
-
-    Returns:
-        pretrained_model: The (optionally PEFT-modified) model.
-        train_dataloader: Dataloader for training data.
-        validation_dataloader: Dataloader for validation data.
-        test_dataloader: Dataloader for test data.
-    """
     # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
@@ -216,22 +219,6 @@ def pre_process(model_name, batch_size, device, peft_config=None, mode='expert')
 
  
 def pre_process_data(model_name, batch_size, device, peft_config=None, mode='expert'):
-    """
-    Loads the MMLU dataset and tokenizer, and returns only the train, validation,
-    and test dataloaders (no model loading).
-
-    Args:
-        model_name (str): HuggingFace model name or path.
-        batch_size (int): Batch size for dataloaders.
-        device (str or torch.device): (Not used here, kept for compatibility.)
-        peft_config (optional): (Not used here, kept for compatibility.)
-        mode (str): Which dataset split to use: 'expert', 'mixer', or 'full'.
-
-    Returns:
-        train_dataloader: Dataloader for training data.
-        validation_dataloader: Dataloader for validation data.
-        test_dataloader: Dataloader for test data.
-    """
     # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
@@ -278,3 +265,22 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
         batch_size=batch_size
     )
     return train_dataloader, validation_dataloader, test_dataloader
+
+def pre_process_subject_data(model_name, batch_size, split_name='train_expert', subject='abstract_algebra'):
+    print("Loading the dataset ...")
+    mmlu_wrapper = MMLUWrapper()
+    subject_dataset = mmlu_wrapper.get_subject_subset(split_name=split_name, subject=subject)
+
+    print("Loading the tokenizer...")
+    mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    mytokenizer.pad_token = mytokenizer.eos_token  # for generation
+
+    max_len = 512
+
+    print(" >>>>>>>> Initializing the data loaders ... ")
+    subject_dataloader = DataLoader(
+        mmluDataset(subject_dataset, mytokenizer, max_len),
+        batch_size=batch_size,
+    )
+    return subject_dataloader
+
