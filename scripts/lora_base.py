@@ -238,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-125m")
-    parser.add_argument("--rank", type=str, default=8)
+    parser.add_argument("--rank", type=int, default=8)
     args = parser.parse_args()
     print(f"Specified arguments: {args}")
 
