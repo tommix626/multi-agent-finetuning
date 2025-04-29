@@ -1,4 +1,4 @@
-def evaluate_model(model, batch):
+def evaluate_model(model, batch, device):
     """
     Evaluate a PyTorch Model
     :param torch.nn.Module model: the model to be evaluated
