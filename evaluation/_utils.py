@@ -1,3 +1,4 @@
+import torch
 def evaluate_model(model, batch, device):
     """
     Evaluate a PyTorch Model
