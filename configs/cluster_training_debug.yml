@@ -5,7 +5,7 @@ num_experts: 2
 learning_rate: 0.0001
 device: "cpu"
 save_dir: "./checkpoints"
-trainer_id: "debug-run-multiple-experts"
+trainer_id: "debug-new-save"
 lora_r: 8
 lora_alpha: 32
 lora_dropout: 0.1
