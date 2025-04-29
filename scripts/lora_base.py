@@ -248,7 +248,7 @@ if __name__ == "__main__":
     print("initiating peft_config...")
     peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=32, lora_alpha=32, lora_dropout=0.1, target_modules=["q_proj", "k_proj", "v_proj"])
     print("Running pre_process...")
-    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=args.batch_size, device="cuda", peft_config=peft_config, mode = 'expert')  # Pass the LoRA configuration)
+    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=args.batch_size, device="cuda", peft_config=peft_config, mode = 'full')  # Pass the LoRA configuration)
 
     print(" >>>>>>>>  Starting training ... ")
     train(pretrained_model, args.num_epochs, train_dataloader, validation_dataloader, test_dataloader, args.device, args.lr, args.model)
