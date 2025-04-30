@@ -5,7 +5,8 @@ The base model is in control of the expert cluster, and the agent only provide a
 """
 
 import random
-from typing import List, Optional, Tuple
+from re import A
+from typing import Any, Callable, List, Optional, Tuple
 
 from peft import PeftConfig, PeftModel, peft_model
 import torch
@@ -19,6 +20,23 @@ import xlora
 from transformers import AutoConfig
 import os
 import json
+
+def wrap_model_function_to_agent_function(func_model: Callable[[torch.nn.Module], Any]) -> Callable[['ExpertAgent'], Any]:
+    """
+    Wrap a model-level function so that it can be safely run in an ExpertAgent context
+    with the correct adapter activated.
+
+    Args:
+        func_model: A function that accepts a PEFT model and returns a result.
+
+    Returns:
+        A function that takes an ExpertAgent, activates its adapter, and applies func_model to its model.
+    """
+    def agent_func(agent: ExpertAgent) -> Any:
+        agent.adapter.activate()
+        return func_model(agent.peft_model)
+
+    return agent_func
 
 class ExpertCluster:
     def __init__(self, base_model: PeftModel, tokenizer:AutoTokenizer, peft_config: PeftConfig, num_experts: int, device: str, selection_temperature:float):
@@ -90,6 +108,25 @@ class ExpertCluster:
         for exp in self.experts:
             exp.load(base_dir)
         self.base_dir = base_dir
+
+    def run_function_on_all_expert(self, func: Callable[[ExpertAgent], Any]) -> List[Any]:
+        """
+        Apply a function to all ExpertAgent instances and collect the results.
+
+        Args:
+            func (Callable[[ExpertAgent], Any]): A function taking an ExpertAgent and returning any value.
+
+        Returns:
+            List[Any]: A list of results, one per expert.
+        """
+        results = []
+        for expert in self.experts:
+            result = func(expert)
+            results.append(result)
+        return results
+    
+
+    #NOTE: ##### XLoRA Functionality #####
 
     def convert_to_xlora(self, xlora_depth: int = 8, enable_softmax: bool = True, 
                          softmax_temperature: float = 1.0, layerwise_scalings: bool = True):
