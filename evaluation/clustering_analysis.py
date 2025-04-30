@@ -27,27 +27,58 @@ def build_analysis_dataframe(assignments, uid_to_subject, expert_id):
             data.append({'uid': uid, 'subject': subject, 'expert_id': expert_id})
     return pd.DataFrame(data)
 
-def plot_subject_distributions(df, save_path=None):
-    experts = sorted(df['expert_id'].unique())
-    num_experts = len(experts)
+def plot_normalized_distributions(df, uid_to_subject, num_epochs=10, save_path=None):
+    """
+    Plot normalized exposure of each expert to subjects.
 
-    fig, axes = plt.subplots(nrows=num_experts, ncols=1, figsize=(40, 20))
-    if num_experts == 1:
-        axes = [axes]
+    Normalized exposure:
+        (number of data samples an expert saw from subject s)
+        -----------------------------------------------------
+        (total number of samples from subject s × num_epochs)
 
-    for ax, expert_id in zip(axes, experts):
-        sub_df = df[df['expert_id'] == expert_id]
-        sub_df['subject'].value_counts().plot(kind='barh', ax=ax)
-        ax.set_title(f'Subject Distribution - Expert {expert_id}')
-        ax.set_xlabel('Number of Samples')
-        ax.set_ylabel('Subject')
-        ax.tick_params(axis='y', labelsize=5)
+    Measures how much each expert was exposed to a subject,
+    relative to the subject's availability and training duration.
+    """
+
+    # Step 1: Count total number of data points per subject across train_full
+    all_subjects = [uid_to_subject[uid] for uid in uid_to_subject]
+    subject_total_counts = pd.Series(all_subjects).value_counts()  # e.g., {"law": 3000, "math": 1200, ...}
+
+    # Step 2: Count how many samples each expert trained on per subject
+    expert_subject_counts = df.groupby(['expert_id', 'subject']).size().unstack(fill_value=0)
+
+    # Step 3: Normalize: divide by (subject size × epochs)
+    normalized = expert_subject_counts.divide(subject_total_counts, axis=1).divide(num_epochs)
+
+    # Step 4: Plot
+    experts = normalized.index.tolist()
+    ncols = 3
+    nrows = math.ceil(len(experts) / ncols)
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(20, 6 * nrows), squeeze=False)
+
+    for idx, expert_id in enumerate(experts):
+        row, col = divmod(idx, ncols)
+        ax = axes[row][col]
+        normalized.loc[expert_id].sort_values().plot(kind='barh', ax=ax)
+
+        ax.set_title(f'Normalized Exposure - Expert {expert_id}', fontsize=12)
+        ax.set_xlabel('Normalized Exposure', fontsize=10)
+        ax.set_ylabel('Subject', fontsize=10)
+        ax.tick_params(axis='y', labelsize=7)
+        ax.tick_params(axis='x', labelsize=8)
+
+    # Hide unused subplots
+    for idx in range(len(experts), nrows * ncols):
+        row, col = divmod(idx, ncols)
+        fig.delaxes(axes[row][col])
 
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path)
+        plt.savefig(save_path, dpi=500)
     plt.show()
 
+
+    
 def plot_subject_distributions(df, save_path=None):
     experts = sorted(df['expert_id'].unique())
     num_experts = len(experts)
@@ -75,7 +106,7 @@ def plot_subject_distributions(df, save_path=None):
 
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300)
+        plt.savefig(save_path, dpi=500)
     plt.show()
 
 def main():
@@ -96,11 +127,21 @@ def main():
         df = build_analysis_dataframe(cluster_assignments, uid_to_subject, expert_id)
         all_dfs.append(df)
 
-    full_df = pd.concat(all_dfs, ignore_index=True)
+        full_df = pd.concat(all_dfs, ignore_index=True)
     print(f"Total matched examples across all experts: {len(full_df)}")
 
-    print("Plotting subject distributions for all experts...")
+    print("Computing normalized subject exposures...")
+
+    print("Plotting raw subject distributions...")
     plot_subject_distributions(full_df, save_path="evaluation/all_expert_subject_distributions.png")
+    
+    print("Plotting normalized subject exposures...")
+    plot_normalized_distributions(
+        full_df,
+        uid_to_subject=uid_to_subject,
+        num_epochs=10,
+        save_path="evaluation/normalized_subject_exposures.png"
+    )
 
 if __name__ == "__main__":
     main()
