@@ -33,6 +33,7 @@ def evaluate_model(model, batch, device):
 
     # forward pass
     output = model(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
+    print(f"model output.loss=", output.loss)
     logits = output.logits
 
     # Shift for next token prediction
@@ -56,6 +57,7 @@ def evaluate_model(model, batch, device):
     accuracy = total_correct / total_tokens
 
 
+    print(f"metric loss=", avg_loss)
     # compute and return metrics
     return {
         "loss": avg_loss,

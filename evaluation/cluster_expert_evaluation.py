@@ -1,5 +1,14 @@
+"""
+eval the model on eval dataset.
+
+PYTHONPATH=. python evaluation/cluster_expert_evaluation.py --config=configs/new_save/new_save.yaml --epoch=7
+
+"""
 import os
 import argparse
+import re
+from typing import Optional
+import torch
 from torch.utils.data import DataLoader
 from evaluation._utils import evaluate_model, load_expert_cluster_from_checkpoint
 from config import parse_config  # assume this loads and returns a Config object
@@ -17,6 +26,7 @@ def main():
     config = parse_config(args.config)
     trainer_id = config.trainer_id
     epoch_to_load = args.epoch
+    config.device = "cpu" #FIXME: Temp override for testing
 
     # Paths
     checkpoints_root = config.save_dir
@@ -27,7 +37,22 @@ def main():
     if not checkpoint_folders:
         raise ValueError(f"No checkpoint found for trainer ID: {trainer_id}")
 
-    checkpoint_folders = sorted(checkpoint_folders, key=lambda x: int(x.split("-epoch-")[-1]))
+    def extract_epoch(folder_name: str) -> Optional[int]:
+        print(f"matching {folder_name}")
+        match = re.search(r"-epoch-(\d+)", folder_name)
+        print(f"matched {int(match.group(1)) if match else None}")
+        return int(match.group(1)) if match else None
+
+    # Filter only valid checkpoint folders with an epoch suffix
+    checkpoint_folders = [
+        d for d in os.listdir(checkpoints_root)
+        if d.startswith(trainer_id)
+        and os.path.isdir(os.path.join(checkpoints_root, d))
+        and extract_epoch(d) is not None
+    ]
+    print(f"checkpoints={checkpoint_folders}")
+
+    checkpoint_folders = sorted(checkpoint_folders, key=extract_epoch)
     if epoch_to_load is None:
         checkpoint_folder = checkpoint_folders[-1]
     else:
@@ -42,10 +67,10 @@ def main():
     expert_cluster, _, tokenizer = load_expert_cluster_from_checkpoint(checkpoint_path, device=config.device)
 
     # Evaluation dataset
-    _, _, eval_loader = pre_process_data(
+    train_loader, _, eval_loader = pre_process_data(
         model_name=config.model_name,
         batch_size=config.batch_size,  # TODO: CONFIG change to 1 to be finegrained to documents.
-        device=config.device,
+        device=config.device if torch.cuda.is_available() else "cpu", #TODO: CONFIG: can force to be "cpu"
         peft_config=None,
         mode="expert"
     )
@@ -58,10 +83,11 @@ def main():
     total_batches = 0
 
 
-    for batch in eval_loader:
+    for batch in train_loader: # FIXME:eval_loader:
         eval_function = lambda model: evaluate_model(model, batch, config.device)  # model -> res
         wrapped_eval_function = wrap_model_function_to_agent_function(eval_function) # expert -> res
         batch_metrics = expert_cluster.run_function_on_all_expert(wrapped_eval_function)  # call wrap_func(exp) to get res
+        print(f"batch metrics: {batch_metrics}")
 
         for k in total_metrics[0]:
             for i in range(num_exp):

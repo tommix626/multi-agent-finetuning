@@ -1,6 +1,6 @@
 import os
 import yaml
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from typing import Optional, Dict, Any
 
 
@@ -64,7 +64,7 @@ def parse_config(path: str) -> Config:
     with open(path, "r") as f:
         raw_data = yaml.safe_load(f)
 
-    default_fields = {f.name for f in field(Config)}
+    default_fields = {f.name for f in fields(Config)}
     unknown_keys = set(raw_data.keys()) - default_fields
     if unknown_keys:
         print(f"[Warning] Unknown config fields in {path}: {unknown_keys}")
