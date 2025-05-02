@@ -2,7 +2,7 @@ import torch
 
 import os
 import json
-from typing import Optional
+from typing import Optional, Tuple
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import get_peft_model, PeftConfig

@@ -14,6 +14,7 @@ import torch
 import xlora
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from torch.utils.data import DataLoader
+from _utils import evaluate_model
 
 # ──────────────────────────────────────────────────────────────────────────────
 # make data/mmlu visible as a module
@@ -24,7 +25,7 @@ from mmludataset import pre_process_data
 
 def main():
     # 1) Config
-    CHECKPOINT_DIR = "./checkpoints/low-mi-temp-epoch-9-mixed"
+    CHECKPOINT_DIR = "/home/rliu79/test/multi-agent-finetuning/checkpoints/low-mi-temp-epoch-9-mixed"
 
     # FIX: read the base_model_id that was actually used when training
     xlora_cfg_path = os.path.join(CHECKPOINT_DIR, "xlora_config.json")
