@@ -1,88 +1,120 @@
+"""
+Evaluation script for ExpertCluster.
+Modular, clean, and configurable via --config and --epoch.
+"""
+
+import os
+import json
+import argparse
+from typing import Optional
+
 import torch
 from torch.utils.data import DataLoader
-from transformers.models.auto.modeling_auto import AutoModelForCausalLM
-from transformers.models.auto.tokenization_auto import AutoTokenizer
-from peft import get_peft_model
-import json
-import os
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import get_peft_model, PeftConfig
 
-from training.cluster_perplexity_trainer import TrainerConfig, ExpertTrainer
+from training.cluster_perplexity_trainer import TrainerConfig
+from models.expert_cluster import ExpertCluster
 
-def main():
-    # Load config
-    trainer_id = "default-trainer"  # Change this if needed
-    epoch_to_load = None  # Set to specific epoch or None to auto-load latest
-    
-    # Paths
-    checkpoints_root = "checkpoints"
+# ---------------------- Argument and Config Loading ----------------------
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to metadata.json or TrainerConfig YAML/JSON")
+    parser.add_argument("--epoch", type=int, default=None, help="Epoch to load (latest if None)")
+    return parser.parse_args()
+
+def find_checkpoint_folder(trainer_id: str, checkpoints_root: str, epoch: Optional[int] = None) -> str:
     checkpoint_folders = [
         d for d in os.listdir(checkpoints_root)
         if d.startswith(trainer_id)
     ]
     if not checkpoint_folders:
-        raise ValueError(f"No checkpoint found for trainer ID: {trainer_id}")
+        raise FileNotFoundError(f"No checkpoints found for trainer_id={trainer_id}")
 
-    # Sort and pick checkpoint
     checkpoint_folders = sorted(checkpoint_folders, key=lambda x: int(x.split("-epoch-")[-1]))
-    if epoch_to_load is None:
-        checkpoint_folder = checkpoint_folders[-1]
-    else:
-        checkpoint_folder = next((f for f in checkpoint_folders if f"-epoch-{epoch_to_load}" in f), None)
-        if checkpoint_folder is None:
-            raise ValueError(f"No checkpoint found for epoch {epoch_to_load}")
-    checkpoint_path = os.path.join(checkpoints_root, checkpoint_folder)
-    print(f"[Eval] Loading from checkpoint {checkpoint_path}")
+    if epoch is None:
+        return os.path.join(checkpoints_root, checkpoint_folders[-1])
+    for folder in checkpoint_folders:
+        if f"-epoch-{epoch}" in folder:
+            return os.path.join(checkpoints_root, folder)
+    raise FileNotFoundError(f"No checkpoint found for epoch {epoch}")
 
-    # Load metadata
-    with open(os.path.join(checkpoint_path, "metadata.json"), "r") as f:
-        metadata = json.load(f)
+def load_training_config(config_path: str) -> TrainerConfig:
+    if config_path.endswith("metadata.json"):
+        with open(config_path, "r") as f:
+            metadata = json.load(f)
+        return TrainerConfig(**metadata["training_config"])
+    raise ValueError("Only metadata.json loading is supported in this script.")
 
-    training_config = TrainerConfig(**metadata['training_config'])
+# ---------------------- Model and Cluster Loading ----------------------
 
-    # Model and tokenizer
-    base_model = AutoModelForCausalLM.from_pretrained(training_config.model_name)
-    tokenizer = AutoTokenizer.from_pretrained(training_config.model_name)
+def load_cluster_and_tokenizer(config: TrainerConfig, checkpoint_path: str) -> tuple[ExpertCluster, AutoTokenizer]:
+    base_model = AutoModelForCausalLM.from_pretrained(config.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 
-    peft_config = load_peft_config(checkpoint_path)  # otherwise adjust
+    peft_config_path = os.path.join(checkpoint_path, "adapter_config.json")
+    if not os.path.exists(peft_config_path):
+        raise FileNotFoundError(f"Missing PEFT config at {peft_config_path}")
+    peft_config = PeftConfig.from_pretrained(checkpoint_path)
 
-    model = get_peft_model(base_model, peft_config)
-    model = model.to(training_config.device)
+    peft_model = get_peft_model(base_model, peft_config).to(config.device)
 
-    # Load trained adapters
-    from models.expert_cluster import ExpertCluster
-    expert_cluster = ExpertCluster(
-        base_model=model,
+    cluster = ExpertCluster(
+        base_model=peft_model,
         tokenizer=tokenizer,
         peft_config=peft_config,
-        **training_config.expert_cluster_kwargs()
+        **config.expert_cluster_kwargs()
     )
-    expert_cluster.load_all_experts(checkpoint_path)
+    cluster.load_all_experts(checkpoint_path)
+    return cluster, tokenizer
 
-    # Evaluation dataset
-    from your_dataset_module import get_eval_dataset  # you need to define this
+# ---------------------- Evaluation Logic ----------------------
+
+def evaluate_model(model, batch, device):
+    model.eval()
+    with torch.no_grad():
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        labels = batch['labels'].to(device)
+
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        loss = outputs.loss
+        perplexity = torch.exp(loss)
+
+        return {"loss": loss.item(), "perplexity": perplexity.item(), "accuracy": 0.0}  # Add real acc if needed
+
+# ---------------------- Main Script ----------------------
+
+def main():
+    args = parse_args()
+    config = load_training_config(args.config)
+    checkpoint_path = find_checkpoint_folder(config.trainer_id, "checkpoints", epoch=args.epoch)
+    print(f"[Eval] Loading checkpoint from {checkpoint_path}")
+
+    cluster, tokenizer = load_cluster_and_tokenizer(config, checkpoint_path)
+
+    from your_dataset_module import get_eval_dataset  # You must define this
     eval_dataset = get_eval_dataset(tokenizer)
     eval_loader = DataLoader(eval_dataset, batch_size=4, shuffle=False)
 
-    # Evaluation loop
-    model.eval()
     total_metrics = {"loss": 0.0, "perplexity": 0.0, "accuracy": 0.0}
     total_batches = 0
 
     for batch in eval_loader:
-        # Select expert
-        expert = expert_cluster.delegate_to_expert(batch)
-        batch_metrics = evaluate_model(expert.adapter.model, batch, training_config.device)
+        expert = cluster.delegate_to_expert(batch)
+        batch_metrics = evaluate_model(expert.adapter.model, batch, config.device)
 
-        for k in total_metrics.keys():
+        for k in total_metrics:
             total_metrics[k] += batch_metrics[k]
         total_batches += 1
 
-    # Average the metrics
     avg_metrics = {k: v / total_batches for k, v in total_metrics.items()}
 
-    print("\n=== Evaluation Metrics ===")
+    print("\n=== Evaluation Results ===")
     for k, v in avg_metrics.items():
         print(f"{k.capitalize()}: {v:.4f}")
 
 if __name__ == "__main__":
     main()
+
