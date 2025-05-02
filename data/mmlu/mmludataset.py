@@ -10,49 +10,54 @@ from peft import get_peft_model
 # testset is for evaluation after part2 (overall evaluation)
 
 class MMLUWrapper:
-    def __init__(self, seed=42, expert_test_size=0.2, mixer_train_size=0.6, mixer_dev_size=0.2, mixer_test_size=0.2):
+    def __init__(self, seed=42, expert_train_size=0.5, mixer_train_size=0.3, dev_size=0.1, test_size=0.1):
         self.seed = seed
-        self.expert_test_size = expert_test_size
+        self.expert_train_size = expert_train_size
         self.mixer_train_size = mixer_train_size
-        self.mixer_dev_size = mixer_dev_size
-        self.mixer_test_size = mixer_test_size
+        self.dev_size = dev_size
+        self.test_size = test_size
         self.dataset = self._load_and_process()
 
     def _load_and_process(self):
         raw = load_dataset("cais/mmlu", "all")
 
-        expert_split = raw["test"].train_test_split(test_size=self.expert_test_size, seed=self.seed)
+        # expert_split = raw["test"].train_test_split(test_size=self.expert_test_size, seed=self.seed)
+        # train_expert = self._map_choices_to_answer(expert_split["train"], "train_expert")
+        # dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
 
-        train_expert = self._map_choices_to_answer(expert_split["train"], "train_expert")
-        dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
+        train_classifier = self._map_choices_to_answer(raw["test"], "train_classifier")
 
-        mixer_split = raw["auxiliary_train"].train_test_split(test_size=1.0 - self.mixer_train_size, seed=self.seed)
-        mixer_dev_test_split = mixer_split["test"].train_test_split(test_size=self.mixer_test_size / (self.mixer_test_size + self.mixer_dev_size), seed=self.seed)
+        aux_split = raw["auxiliary_train"].train_test_split(test_size=1.0 - self.expert_train_size, seed=self.seed)
+        train_expert = self._map_choices_to_answer(aux_split["train"], "train_expert")
 
-        train_mixer = self._map_choices_to_answer(mixer_split["train"], "dev")
-        dev_mixer = self._map_choices_to_answer(mixer_dev_test_split["train"], "dev_mixer")
-        test_mixer = self._map_choices_to_answer(mixer_dev_test_split["test"], "test_mixer")
+        mixer_split = aux_split["test"].train_test_split(test_size= (self.dev_size + self.test_size) / (self.dev_size + self.test_size + self.mixer_train_size), seed=self.seed)
 
-        train_full = concatenate_datasets([train_expert, train_mixer])
-        dev_full = concatenate_datasets([dev_expert, dev_mixer])
+        train_mixer = self._map_choices_to_answer(mixer_split["train"], "train_mixer")
+        mixer_dev_test_split = mixer_split["test"].train_test_split(test_size=self.test_size / (self.dev_size + self.test_size), seed=self.seed)
+
+        dev = self._map_choices_to_answer(mixer_dev_test_split["train"], "dev_mixer")
+        test = self._map_choices_to_answer(mixer_dev_test_split["test"], "test_mixer")
+
+        train_full = concatenate_datasets([train_classifier, train_expert, train_mixer])
 
         return DatasetDict({
+            "train_classifier": train_classifier,
             "train_expert": train_expert,
-            "dev_expert": dev_expert,
             "train_mixer": train_mixer,
-            "dev_mixer": dev_mixer,
-            "train_full": train_full,
-            "dev_full": dev_full,
-            "test": test_mixer
+            "dev": dev,
+            "test": test,
+            "train_full": train_full
         })
 
     def _map_choices_to_answer(self, dataset, split_name):
         def _mapper(example, idx):
             answer_index = example["answer"]
             answer_str = example["choices"][answer_index]
+            subject = example["subject"]
             return {
                 "mapped_answer": answer_str,
-                "uid": f"{split_name}-{idx:06d}"  # e.g., train-000001
+                "uid": f"{split_name}-{idx:06d}",  # e.g., train-000001
+                "subject": subject
             }
         return dataset.map(_mapper, with_indices=True)
 
@@ -60,22 +65,30 @@ class MMLUWrapper:
         return self.dataset
 
     def get_splits(self):
-        return (self.dataset["train_expert"], self.dataset["dev_expert"],self.dataset["train_mixer"], self.dataset["dev_mixer"], self.dataset["test"])
-    
+        return (
+            self.dataset["train_expert"],
+            self.dataset["train_mixer"],
+            self.dataset["train_classifier"],
+            self.dataset["dev"],
+            self.dataset["test"],
+        )
     def get_train_expert(self):
         return self.dataset["train_expert"]
-
-    def get_dev_expert(self):
-        return self.dataset["dev_expert"]
 
     def get_train_mixer(self):
         return self.dataset["train_mixer"]
 
-    def get_dev_mixer(self):
-        return self.dataset["dev_mixer"]
+    def get_train_classifier(self):
+        return self.dataset["train_classifier"]
+
+    def get_dev(self):
+        return self.dataset["dev"]
 
     def get_test(self):
         return self.dataset["test"]
+    
+    def get_train_full(self):
+        return self.dataset["train_full"]
     
     def get_subject_subset(self, split_name: str, subject: str):
         """
@@ -143,7 +156,7 @@ class mmluDataset(torch.utils.data.Dataset):
         answer_encoding = self.tokenizer.encode_plus(
             answer,
             add_special_tokens=False,
-            max_length=10,  # Short max length for answers
+            max_length="max_length",
             padding="max_length",
             truncation=True,
             return_tensors="pt"
@@ -170,38 +183,45 @@ def pre_process(model_name, batch_size, device, peft_config=None, mode='expert')
     dataset = mmlu_wrapper.get_dataset()
 
     print("Loading the tokenizer...")
-    mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-    mytokenizer.pad_token = mytokenizer.eos_token  # for generation
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    tokenizer.pad_token = tokenizer.eos_token  # for generation
 
     max_len = 512
 
     print(f"Loading the {mode} data into DS...")
     if mode == "expert":
-        dataset_train = dataset['train_expert']
-        dataset_dev = dataset['dev_expert']
+        train_classifier_data  = dataset["train_classifier"]
+        train_expert_data  = dataset["train_expert"]
+        train_classifier_loader = DataLoader(
+            mmluDataset(train_classifier_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
+        train_expert_loader = DataLoader(
+            mmluDataset(train_expert_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
     elif mode == "mixer":
-        dataset_train = dataset['train_mixer']
-        dataset_dev = dataset['dev_mixer']
+        train_data  = dataset["train_mixer"]
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
     elif mode == "full":
-        dataset_train = dataset['train_full']
-        dataset_dev = dataset['dev_full']
+        train_data  = dataset["train_full"]
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
     else:
-        raise ValueError(f"Unknown mode '{mode}'. Expected 'expert' or 'mixer'.")
-
-    dataset_test = dataset['test']
-
-    print(" >>>>>>>> Initializing the data loaders ... ")
-    train_dataloader = DataLoader(
-        mmluDataset(dataset_train, mytokenizer, max_len),
+        raise ValueError(f"Unknown mode '{mode}'. Expected 'expert', 'mixer', or 'full'.")
+    
+    dev_loader = DataLoader(
+        mmluDataset(dataset["dev"], tokenizer, max_len),
         batch_size=batch_size,
     )
-    validation_dataloader = DataLoader(
-        mmluDataset(dataset_dev, mytokenizer, max_len),
-        batch_size=batch_size
-    )
-    test_dataloader = DataLoader(
-        mmluDataset(dataset_test, mytokenizer, max_len),
-        batch_size=batch_size
+    test_loader = DataLoader(
+        mmluDataset(dataset["test"], tokenizer, max_len),
+        batch_size=batch_size,
     )
 
     # Load the model
@@ -215,56 +235,68 @@ def pre_process(model_name, batch_size, device, peft_config=None, mode='expert')
     print("Moving model to device ..." + str(device))
     pretrained_model.to(device)
 
-    return pretrained_model, train_dataloader, validation_dataloader, test_dataloader
+    if mode == "expert":
+        return pretrained_model, train_classifier_loader, train_expert_loader, dev_loader, test_loader
+    else:
+        return pretrained_model, train_loader, dev_loader, test_loader
 
  
 def pre_process_data(model_name, batch_size, device, peft_config=None, mode='expert'):
-    # download dataset
     print("Loading the dataset ...")
     mmlu_wrapper = MMLUWrapper()
     dataset = mmlu_wrapper.get_dataset()
 
-    # print("Loding the data into DS...")
-    # dataset_train = dataset['train']#.select(range(30))  # FIXME: temp fix for debug
-    # print("training data",dataset_train)
-    # dataset_dev = dataset['dev']
-    # dataset_test = dataset['test']
-
     print("Loading the tokenizer...")
-    mytokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-    mytokenizer.pad_token = mytokenizer.eos_token  # for generation
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    tokenizer.pad_token = tokenizer.eos_token  # for generation
 
     max_len = 512
 
-    print(f"Loding the {mode} data into DS...")
+    print(f"Loading the {mode} data into Dataset objects...")
     if mode == "expert":
-        dataset_train = dataset['train_expert']
-        dataset_dev = dataset['dev_expert']
+        train_classifier_data = dataset['train_classifier']
+        train_expert_data = dataset['train_expert']
+        dev_data = dataset['dev_expert']
+        train_classifier_loader = DataLoader(
+            mmluDataset(train_classifier_data, tokenizer, max_len),
+            batch_size=batch_size
+        )
+        train_expert_loader = DataLoader(
+            mmluDataset(train_expert_data, tokenizer, max_len),
+            batch_size=batch_size
+        )
     elif mode == "mixer":
-        dataset_train = dataset['train_mixer']
-        dataset_dev = dataset['dev_mixer']
+        train_data = dataset['train_mixer']
+        dev_data = dataset['dev_mixer']
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size
+        )
     elif mode == "full":
-        dataset_train = dataset['train_full']
-        dataset_dev = dataset['dev_full']
+        train_data = dataset['train_full']
+        dev_data = dataset['dev_full']
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size
+        )
     else:
-        raise ValueError(f"Unknown mode {mode}")
+        raise ValueError(f"Unknown mode '{mode}'. Expected 'expert', 'mixer', or 'full'.")
 
-    dataset_test = dataset['test']
-
-    print(" >>>>>>>> Initializing the data loaders ... ")
-    train_dataloader = DataLoader(
-        mmluDataset(dataset_train, mytokenizer, max_len),
-        batch_size=batch_size,
-    )
-    validation_dataloader = DataLoader(
-        mmluDataset(dataset_dev, mytokenizer, max_len),
+    test_data = dataset['test']
+    dev_loader = DataLoader(
+        mmluDataset(dev_data, tokenizer, max_len),
         batch_size=batch_size
     )
-    test_dataloader = DataLoader(
-        mmluDataset(dataset_test, mytokenizer, max_len),
+    test_loader = DataLoader(
+        mmluDataset(test_data, tokenizer, max_len),
         batch_size=batch_size
     )
-    return train_dataloader, validation_dataloader, test_dataloader
+
+    if mode == "expert":
+        return train_classifier_loader, train_expert_loader, dev_loader, test_loader
+    else:
+        return train_loader, dev_loader, test_loader
+
 
 def pre_process_subject_data(model_name, batch_size, split_name='train_expert', subject='abstract_algebra'):
     print("Loading the dataset ...")
