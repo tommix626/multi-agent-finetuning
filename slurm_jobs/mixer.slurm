@@ -91,7 +91,7 @@ export CMD="$LAUNCHER $PROGRAM"
 
 export PYTHONPATH=/home/rliu79/test/multi-agent-finetuning
 
-python -u /home/rliu79/test/multi-agent-finetuning/scripts/mixture_inference.py
+python -u /home/rliu79/test/multi-agent-finetuning/evaluation/mixer_evaluation.py
 #python -u /home/rliu79/test/multi-agent-finetuning/scripts/mixture_training.py --config /home/rliu79/test/multi-agent-finetuning/configs/mixture_training.yml
 
 echo "END TIME: $(date)"
