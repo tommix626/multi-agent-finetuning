@@ -25,6 +25,8 @@ class MMLUWrapper:
         # train_expert = self._map_choices_to_answer(expert_split["train"], "train_expert")
         # dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
 
+        train_for_clustering_analysis = raw["test"].train_test_split(test_size=0.8, seed=self.seed)
+        
         train_classifier = self._map_choices_to_answer(raw["test"], "train_classifier")
 
         aux_split = raw["auxiliary_train"].train_test_split(test_size=1.0 - self.expert_train_size, seed=self.seed)
@@ -46,7 +48,8 @@ class MMLUWrapper:
             "train_mixer": train_mixer,
             "dev": dev,
             "test": test,
-            "train_full": train_full
+            "train_full": train_full,
+            "train_for_clustering_analysis": train_for_clustering_analysis
         })
 
     def _map_choices_to_answer(self, dataset, split_name):
@@ -60,6 +63,9 @@ class MMLUWrapper:
                 "subject": subject
             }
         return dataset.map(_mapper, with_indices=True)
+    
+    def get_analysis_dataset(self):
+        return self.dataset["train_for_clustering_analysis"]
 
     def get_dataset(self):
         return self.dataset

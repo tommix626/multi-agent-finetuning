@@ -15,7 +15,7 @@ def load_cluster_assignments(json_path):
     return cluster_assignments
 
 def build_uid_maps(mmlu_wrapper, expert_ids, base_path):
-    train_expert = mmlu_wrapper.get_train_expert()
+    train_expert = mmlu_wrapper.get_()
     uid_to_subject = {example['uid']: example['subject'] for example in train_expert}
     uid_to_freq = {}
 
