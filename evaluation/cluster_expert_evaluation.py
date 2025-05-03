@@ -83,7 +83,7 @@ def main():
     total_batches = 0
 
 
-    for batch in train_loader: # FIXME:eval_loader:
+    for batch in eval_loader: # FIXME:eval_loader:
         eval_function = lambda model: evaluate_model(model, batch, config.device)  # model -> res
         wrapped_eval_function = wrap_model_function_to_agent_function(eval_function) # expert -> res
         batch_metrics = expert_cluster.run_function_on_all_expert(wrapped_eval_function)  # call wrap_func(exp) to get res

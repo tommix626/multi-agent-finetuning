@@ -26,4 +26,4 @@ python --version
 mkdir -p logs
 
 # Run your training script
-python -u cluster_training_with_config.py --config configs/cluster_training.yaml
+python -u cluster_training_with_config.py --config configs/new_save/new_data_split.yaml
