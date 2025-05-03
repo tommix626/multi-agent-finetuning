@@ -262,7 +262,7 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
     if mode == "expert":
         train_classifier_data = dataset['train_classifier']
         train_expert_data = dataset['train_expert']
-        dev_data = dataset['dev_expert']
+        dev_data = dataset['dev']
         train_classifier_loader = DataLoader(
             mmluDataset(train_classifier_data, tokenizer, max_len),
             batch_size=batch_size
