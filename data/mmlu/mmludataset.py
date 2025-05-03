@@ -280,7 +280,7 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
         )
     elif mode == "full":
         train_data = dataset['train_full']
-        dev_data = dataset['dev_full']
+        dev_data = dataset['dev']
         train_loader = DataLoader(
             mmluDataset(train_data, tokenizer, max_len),
             batch_size=batch_size
