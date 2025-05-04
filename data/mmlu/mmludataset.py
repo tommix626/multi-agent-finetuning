@@ -51,6 +51,8 @@ class MMLUWrapper:
         test = self._map_choices_to_answer(mixer_dev_test_split["test"], "test_mixer")
 
         train_full = concatenate_datasets([train_classifier, train_expert, train_mixer])
+        train_13 = concatenate_datasets([train_classifier, train_mixer])
+        train_12 = concatenate_datasets([train_classifier, train_expert])
 
         return DatasetDict({
             "train_classifier": train_classifier,
@@ -59,6 +61,8 @@ class MMLUWrapper:
             "dev": dev,
             "test": test,
             "train_full": train_full,
+            "train_12": train_12,
+            "train_13": train_13,
             "train_for_clustering_analysis": train_for_clustering_analysis
         })
 
@@ -87,6 +91,8 @@ class MMLUWrapper:
             self.dataset["train_expert"],
             self.dataset["train_mixer"],
             self.dataset["train_classifier"],
+            self.dataset["train_12"],
+            self.dataset["train_13"],
             self.dataset["dev"],
             self.dataset["test"],
         )
@@ -278,6 +284,18 @@ def pre_process(model_name, batch_size, device, peft_config=None, mode='expert')
         )
     elif mode == "full":
         train_data  = dataset["train_full"]
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
+    elif mode == "12":
+        train_data  = dataset["train_12"]
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
+    elif mode == "13":
+        train_data  = dataset["train_13"]
         train_loader = DataLoader(
             mmluDataset(train_data, tokenizer, max_len),
             batch_size=batch_size,
