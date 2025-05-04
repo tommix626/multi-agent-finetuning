@@ -70,11 +70,11 @@ class ExpertCluster:
         for i in range(num_agents):
             self.experts.append(ExpertAgent(i, self.peft_model, self.peft_config, self.tokenizer, self.device))  # expert themselves manage the adapter logics.
 
-    def delegate_to_expert(self, batch:dict) -> ExpertAgent:
+    def delegate_to_expert(self, batch:dict) -> Tuple[int, ExpertAgent]:
         perplexities = [exp.compute_perplexity(batch) for exp in self.experts]
         chosen_expert_id = self._select(perplexities)
         print(f"[Expert cluster] deledate to expert {self.experts[chosen_expert_id].adapter.name}")
-        return self.experts[chosen_expert_id]
+        return chosen_expert_id, self.experts[chosen_expert_id]
 
     def _select(self, perplexities: List[float]) -> int:
         """delegation strategy for which expert to train on
@@ -123,6 +123,9 @@ class ExpertCluster:
             result = func(expert)
             results.append(result)
         return results
+
+    def get_expert_by_id(self, expert_id:int):
+            return self.experts[expert_id]
     
 
     #NOTE: ##### XLoRA Functionality #####

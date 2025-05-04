@@ -97,7 +97,7 @@ class ExpertTrainer:
                 self._trigger_callbacks("on_batch_start")
 
                 # Delegation step: select expert
-                expert = self.expert_cluster.delegate_to_expert(batch)
+                expert_id, expert = self.expert_cluster.delegate_to_expert(batch)
                 loss = expert.get_training_loss_on(batch)
 
                 # Optimization step
