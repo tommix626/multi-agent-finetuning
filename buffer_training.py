@@ -16,7 +16,7 @@ from peft import LoraConfig, TaskType
 from training.callbacks import ModelCheckpoint, EarlyStopping
 from data.mmlu.mmludataset import pre_process, pre_process_data
 from training.cluster_perplexity_trainer import TrainerConfig, ExpertTrainer
-from training.buffer_training import BufferedExpertTrainer  # ✅ NEW IMPORT
+from training.buffer_trainer import BufferedExpertTrainer  # ✅ NEW IMPORT
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Expert Cluster Model with PEFT.")
