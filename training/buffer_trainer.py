@@ -122,4 +122,5 @@ class BufferedExpertTrainer(ExpertTrainer):
             for key, value in batch.items():
                 merged[key].append(value)
         # Stack all tensors along batch dim
+        print(f"merged={merged}")
         return {key: torch.cat(value_list, dim=0) for key, value_list in merged.items()}
