@@ -66,6 +66,7 @@ class BufferedExpertTrainer(ExpertTrainer):
 
                 loss = None
                 if self.buffer_manager.is_ready(expert_id):
+                    print(f"[Buffer Manager] Expert {expert_id} is ready! Train!")
                     ready_batches = self.buffer_manager.get_ready_batches(expert_id)
                     combined_batch = self._collate_batches(ready_batches)
                     loss = expert.get_training_loss_on(combined_batch)
