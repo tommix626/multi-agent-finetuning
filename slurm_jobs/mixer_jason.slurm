@@ -26,4 +26,5 @@ python --version
 mkdir -p logs
 
 # Run your training script
-python -u cluster_training_with_config.py --config configs/new_save/single_expert.yaml
+export PYTHONPATH=.
+python -u scripts/mixture_training.py --config configs/mixture_training.yml

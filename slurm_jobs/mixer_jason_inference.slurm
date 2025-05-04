@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=expert_trainer_run
+#SBATCH --job-name=expert_inference
 #SBATCH -A jeisner1_gpu
 #SBATCH --partition=a100
 #SBATCH --gres=gpu:1
@@ -15,7 +15,7 @@ module load anaconda
 module load cuda/11.6.0
 
 # Activate your conda environment
-conda activate multi-agent-finetuning
+conda activate test_python
 
 # (Optional) Print environment info for debugging
 nvidia-smi
@@ -26,4 +26,5 @@ python --version
 mkdir -p logs
 
 # Run your training script
-python -u cluster_training_with_config.py --config configs/new_save/single_expert.yaml
+export PYTHONPATH=.
+python -u scripts/mixture_inference.py

@@ -24,6 +24,7 @@ python --version
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
+export PYTHONPATH=/home/xwang397/scr4_jeisner1/tomwang/multi-agent-finetuning
 
 # Run your training script
-python -u cluster_training_with_config.py --config configs/new_save/single_expert.yaml
+python -u /home/xwang397/scr4_jeisner1/tomwang/multi-agent-finetuning/scripts/mixture_training.py --config /home/xwang397/scr4_jeisner1/tomwang/multi-agent-finetuning/configs/mixture_training_4.yml

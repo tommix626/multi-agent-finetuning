@@ -47,8 +47,8 @@ class MMLUWrapper:
         train_mixer = self._map_choices_to_answer(mixer_split["train"], "train_mixer")
         mixer_dev_test_split = mixer_split["test"].train_test_split(test_size=self.test_size / (self.dev_size + self.test_size), seed=self.seed)
 
-        dev = self._map_choices_to_answer(mixer_dev_test_split["train"], "dev_mixer")
-        test = self._map_choices_to_answer(mixer_dev_test_split["test"], "test_mixer")
+        dev = self._map_choices_to_answer(mixer_dev_test_split["train"], "dev")
+        test = self._map_choices_to_answer(mixer_dev_test_split["test"], "test")
 
         train_full = concatenate_datasets([train_classifier, train_expert, train_mixer])
         train_13 = concatenate_datasets([train_classifier, train_mixer])
@@ -355,7 +355,7 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
         )
     elif mode == "mixer":
         train_data = dataset['train_mixer']
-        dev_data = dataset['dev_mixer']
+        dev_data = dataset['dev']
         train_loader = DataLoader(
             mmluDataset(train_data, tokenizer, max_len),
             batch_size=batch_size
