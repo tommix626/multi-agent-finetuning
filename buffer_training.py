@@ -63,11 +63,12 @@ def main():
 
     # 3. Prepare dataset and base model with PEFT
     print("[Main] Loading data and model...", flush=True)
-    train_loader, _, _ = pre_process_data(
+    train_loader, _, _, _ = pre_process_data(
         model_name=model_name,
         batch_size=batch_size,
         device=device,
-        peft_config=peft_config
+        peft_config=peft_config,
+        mode='expert'
     )
 
     # 4. Setup callbacks
