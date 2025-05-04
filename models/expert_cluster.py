@@ -91,7 +91,7 @@ class ExpertCluster:
         probs = torch.softmax(scores, dim=0).tolist()
         print(f"delegation ppl={perplexities}, scores={scores}, probs={probs}")
 
-        self.selection_temperature = max(0.005,self.selection_temperature * 0.998)
+        self.selection_temperature = max(0.001,self.selection_temperature * 0.9995)  # decay to 0.001 at end of epoch 1
         print(f"[Expert cluster] current delegation temperature {self.selection_temperature}")
         return random.choices(index, weights=probs, k=1)[0]
 
