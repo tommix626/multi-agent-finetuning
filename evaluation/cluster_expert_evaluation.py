@@ -14,6 +14,10 @@ from evaluation._utils import evaluate_model, load_expert_cluster_from_checkpoin
 from config import parse_config  # assume this loads and returns a Config object
 from data.mmlu.mmludataset import pre_process_data
 from models.expert_cluster import wrap_model_function_to_agent_function
+import datetime
+from pathlib import Path
+
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -67,7 +71,7 @@ def main():
     expert_cluster, _, tokenizer = load_expert_cluster_from_checkpoint(checkpoint_path, device=config.device)
 
     # Evaluation dataset
-    train_loader, _, eval_loader = pre_process_data(
+    train_classifier_loader, train_extra_loader, eval_loader, test_loader = pre_process_data(
         model_name=config.model_name,
         batch_size=config.batch_size,  # TODO: CONFIG change to 1 to be finegrained to documents.
         device=config.device if torch.cuda.is_available() else "cpu", #TODO: CONFIG: can force to be "cpu"
@@ -76,16 +80,34 @@ def main():
     )
 
     # Evaluation loop
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"eval_metrics_{trainer_id}_epoch{extract_epoch(checkpoint_folder)}_{timestamp}.txt"
+    
+
     num_exp = config.num_experts
+
+
+    log_lines = [
+        f"Model: {config.model_name}",
+        f"Trainer ID: {trainer_id}",
+        f"Checkpoint: {checkpoint_folder}",
+        f"Epoch: {extract_epoch(checkpoint_folder)}",
+        f"Evaluation Time: {timestamp}",
+        f"Number of Experts: {num_exp}",
+        "-" * 50
+    ]
+
+    # Collect individual expert metrics
     total_metrics = []
     for i in range(num_exp):
         total_metrics.append({"loss": 0.0, "perplexity": 0.0, "accuracy": 0.0})
     total_batches = 0
 
-
-    for batch in eval_loader: # FIXME:eval_loader:
-        eval_function = lambda model: evaluate_model(model, batch, config.device)  # model -> res
-        wrapped_eval_function = wrap_model_function_to_agent_function(eval_function) # expert -> res
+    for batch in train_classifier_loader:
+        eval_fn = lambda m: evaluate_model(m, batch, config.device)
+        wrapped_eval_function = wrap_model_function_to_agent_function(eval_fn) # expert -> res
         batch_metrics = expert_cluster.run_function_on_all_expert(wrapped_eval_function)  # call wrap_func(exp) to get res
         print(f"batch metrics: {batch_metrics}")
 
@@ -95,12 +117,18 @@ def main():
 
         total_batches += 1
 
-    for i in range(num_exp):
-        avg_metrics = {k: v / total_batches for k, v in total_metrics[i].items()}
+    # Aggregate and save metrics
+    with open(log_file, "w") as f:
+        f.write("\n".join(log_lines) + "\n")
 
-        print(f"\n=== Expert {i} Evaluation Metrics ===")
-        for k, v in avg_metrics.items():
-            print(f"{k.capitalize()}: {v:.4f}")
+        for i in range(num_exp):
+            avg_metrics = {k: v / total_batches for k, v in total_metrics[i].items()}
+
+            print(f"\n=== Expert {i} Evaluation Metrics ===")
+            f.write(f"\n=== Expert {i} ===\n")
+            for k, v in avg_metrics.items():
+                print(f"{k.capitalize()}: {v:.4f}")
+                f.write(f"{k.capitalize()}: {v:.4f}\n")
 
 if __name__ == "__main__":
     main()
