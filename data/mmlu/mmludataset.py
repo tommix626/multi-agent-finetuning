@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset, DatasetDict, concatenate_datasets
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import get_peft_model
@@ -25,7 +25,8 @@ class MMLUWrapper:
         # train_expert = self._map_choices_to_answer(expert_split["train"], "train_expert")
         # dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
 
-        train_for_clustering_analysis = raw["test"].train_test_split(test_size=0.8, seed=self.seed)
+        clustering_split = raw["test"].train_test_split(test_size=0.2, seed=self.seed)
+        train_for_clustering_analysis = self._map_choices_to_answer(clustering_split["train"], "train_for_clustering_analysis")
         
         train_classifier = self._map_choices_to_answer(raw["test"], "train_classifier")
 
@@ -162,7 +163,7 @@ class mmluDataset(torch.utils.data.Dataset):
         answer_encoding = self.tokenizer.encode_plus(
             answer,
             add_special_tokens=False,
-            max_length="max_length",
+            max_length=self.max_len,
             padding="max_length",
             truncation=True,
             return_tensors="pt"
