@@ -114,8 +114,12 @@ class BufferedExpertTrainer(ExpertTrainer):
 
     def _collate_batches(self, batch_list: List[dict]) -> dict:
         """
-        Merge a list of individual batches into a single batched dict using torch's default_collate logic.
+        Merge a list of individual batches (each is a dict of tensors) into a single batched dict.
+        Handles flattening correctly.
         """
-        from torch.utils.data._utils.collate import default_collate
-        return default_collate(batch_list)
-
+        merged = defaultdict(list)
+        for batch in batch_list:
+            for key, value in batch.items():
+                merged[key].append(value)
+        # Stack all tensors along batch dim
+        return {key: torch.stack(value_list, dim=0) for key, value_list in merged.items()}
