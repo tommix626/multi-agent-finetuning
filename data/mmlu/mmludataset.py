@@ -162,7 +162,7 @@ class mmluDataset(torch.utils.data.Dataset):
         answer_encoding = self.tokenizer.encode_plus(
             answer,
             add_special_tokens=False,
-            max_length="max_length",
+            max_length=self.max_len,
             padding="max_length",
             truncation=True,
             return_tensors="pt"
