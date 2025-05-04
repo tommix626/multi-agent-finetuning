@@ -3,7 +3,17 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset, DatasetDict, concatenate_datasets
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import get_peft_model
-
+import json
+import numpy as np
+import pandas as pd
+import requests
+import argparse
+import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+from sentence_transformers import SentenceTransformer
 
 # trainset is for part1 (clustering and fine-tuning)
 # devset is for training of part2 (prompt-tuning, mixer)
@@ -57,7 +67,9 @@ class MMLUWrapper:
             answer_index = example["answer"]
             answer_str = example["choices"][answer_index]
             subject = example["subject"]
+            question = example['question']
             return {
+                "question": question,
                 "mapped_answer": answer_str,
                 "uid": f"{split_name}-{idx:06d}",  # e.g., train-000001
                 "subject": subject
@@ -180,8 +192,60 @@ class mmluDataset(torch.utils.data.Dataset):
             'uid': uid
         }
     
+def _tfidf_cluster(texts, k):
+    vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(texts)
+    pca = PCA(n_components=min(100, tfidf_matrix.shape[1] - 1))
+    reduced = pca.fit_transform(tfidf_matrix.toarray())
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    return kmeans.fit_predict(reduced)
 
-    
+
+def _sentence_transformer_cluster(texts, k):
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = model.encode(texts)
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    return kmeans.fit_predict(embeddings)
+
+
+def k_means_clustering(train_loader, k=5, method='tfidf'):
+    """
+    Cluster training examples based on concatenated question and answer strings.
+
+    Args:
+        train_loader: DataLoader for training data (no shuffle ideally).
+        k: Number of clusters.
+        method: 'tfidf' or 'sentence-transformer'.
+
+    Returns:
+        List of k clusters, each a list of UIDs.
+    """
+    # Build a mapping from uid to concatenated text
+    dataset = train_loader.dataset.data  
+    uid2text = {ex['uid']: f"{ex['question']} {ex['mapped_answer']}" for ex in dataset}
+
+    # Extract texts in the order of the loader
+    texts, uids = [], []
+    for batch in train_loader:
+        for uid in batch['uid']:
+            texts.append(uid2text[uid])
+            uids.append(uid)
+
+    # Perform clustering
+    if method == 'tfidf':
+        labels = _tfidf_cluster(texts, k)
+    elif method == 'sentence-transformer':
+        labels = _sentence_transformer_cluster(texts, k)
+    else:
+        raise ValueError("Unsupported clustering method. Choose 'tfidf' or 'sentence-transformer'.")
+
+    # Group UIDs by cluster
+    clustered_uids = [[] for _ in range(k)]
+    for uid, label in zip(uids, labels):
+        clustered_uids[label].append(uid)
+    return clustered_uids
+
+
 def pre_process(model_name, batch_size, device, peft_config=None, mode='expert'):
     # download dataset
     print("Loading the dataset ...")
