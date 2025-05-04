@@ -367,6 +367,18 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
             mmluDataset(train_data, tokenizer, max_len),
             batch_size=batch_size
         )
+    elif mode == "12":
+        train_data  = dataset["train_12"]
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
+    elif mode == "13":
+        train_data  = dataset["train_13"]
+        train_loader = DataLoader(
+            mmluDataset(train_data, tokenizer, max_len),
+            batch_size=batch_size,
+        )
     else:
         raise ValueError(f"Unknown mode '{mode}'. Expected 'expert', 'mixer', or 'full'.")
 
