@@ -36,6 +36,8 @@ class MMLUWrapper:
         # dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
 
         train_for_clustering_analysis = raw["test"].train_test_split(test_size=0.8, seed=self.seed)
+        train_for_clustering_analysis = train_for_clustering_analysis["train"]
+        train_for_clustering_analysis = self._map_choices_to_answer(train_for_clustering_analysis, "train_for_clustering_analysis")
         
         train_classifier = self._map_choices_to_answer(raw["test"], "train_classifier")
 
