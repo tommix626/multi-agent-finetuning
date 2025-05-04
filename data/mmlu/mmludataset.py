@@ -346,7 +346,6 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
     if mode == "expert":
         train_classifier_data = dataset['train_classifier']
         train_expert_data = dataset['train_expert']
-        dev_data = dataset['dev']
         train_classifier_loader = DataLoader(
             mmluDataset(train_classifier_data, tokenizer, max_len),
             batch_size=batch_size
@@ -357,14 +356,12 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
         )
     elif mode == "mixer":
         train_data = dataset['train_mixer']
-        dev_data = dataset['dev']
         train_loader = DataLoader(
             mmluDataset(train_data, tokenizer, max_len),
             batch_size=batch_size
         )
     elif mode == "full":
         train_data = dataset['train_full']
-        dev_data = dataset['dev']
         train_loader = DataLoader(
             mmluDataset(train_data, tokenizer, max_len),
             batch_size=batch_size
@@ -384,7 +381,9 @@ def pre_process_data(model_name, batch_size, device, peft_config=None, mode='exp
     else:
         raise ValueError(f"Unknown mode '{mode}'. Expected 'expert', 'mixer', or 'full'.")
 
+    dev_data = dataset['dev']
     test_data = dataset['test']
+
     dev_loader = DataLoader(
         mmluDataset(dev_data, tokenizer, max_len),
         batch_size=batch_size
