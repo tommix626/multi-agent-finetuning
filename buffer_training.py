@@ -16,6 +16,7 @@ from peft import LoraConfig, TaskType
 from training.callbacks import ModelCheckpoint, EarlyStopping
 from data.mmlu.mmludataset import pre_process, pre_process_data
 from training.cluster_perplexity_trainer import TrainerConfig, ExpertTrainer
+from training.buffer_training import BufferedExpertTrainer  # ✅ NEW IMPORT
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Expert Cluster Model with PEFT.")
@@ -45,6 +46,7 @@ def main():
     learning_rate = config_dict.get("learning_rate", 1e-4)
     device = config_dict.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     save_dir = config_dict.get("save_dir", "./checkpoints")
+    buffer_batch_size = config_dict.get("buffer_batch_size", 1)  # ✅ NEW CONFIG
     default_trainer_id = f"default-{model_name}-batch-{batch_size}-k-{num_experts}-lr-{learning_rate}"
     trainer_id = config_dict.get("trainer_id", default_trainer_id)
 
@@ -86,12 +88,20 @@ def main():
         trainer_id=trainer_id,
     )
 
-    # 6. Instantiate trainer
-    trainer = ExpertTrainer(
-        training_config=trainer_config,
-        dataloader=train_loader,
-        peft_config=peft_config
-    )
+    # 6. Instantiate trainer (buffered or standard)
+    if buffer_batch_size > 1:
+        trainer = BufferedExpertTrainer(
+            training_config=trainer_config,
+            dataloader=train_loader,
+            peft_config=peft_config,
+            buffer_batch_size=buffer_batch_size
+        )
+    else:
+        trainer = ExpertTrainer(
+            training_config=trainer_config,
+            dataloader=train_loader,
+            peft_config=peft_config
+        )
 
     # 7. Start training
     trainer.train()
