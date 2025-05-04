@@ -114,13 +114,22 @@ class BufferedExpertTrainer(ExpertTrainer):
 
     def _collate_batches(self, batch_list: List[dict]) -> dict:
         """
-        Merge a list of individual batches (each is a dict of tensors) into a single batched dict.
-        Handles flattening correctly.
+        Merge a list of mini-batches (dicts of tensors or lists) into a single mega-batch.
+        Handles cases where some fields are non-Tensor (e.g., uid).
         """
         merged = defaultdict(list)
         for batch in batch_list:
             for key, value in batch.items():
                 merged[key].append(value)
-        # Stack all tensors along batch dim
-        print(f"merged={merged}")
-        return {key: torch.cat(value_list, dim=0) for key, value_list in merged.items()}
+
+        collated = {}
+        for key, value_list in merged.items():
+            if isinstance(value_list[0], torch.Tensor):
+                collated[key] = torch.cat(value_list, dim=0)
+            elif isinstance(value_list[0], list):
+                # Flatten a list of lists (e.g., uid)
+                collated[key] = [item for sublist in value_list for item in sublist]
+            else:
+                raise TypeError(f"Unsupported batch field type for key '{key}': {type(value_list[0])}")
+
+        return collated
