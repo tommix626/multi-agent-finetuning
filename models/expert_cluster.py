@@ -110,7 +110,9 @@ class ExpertCluster:
             sample_ppls = perplexity_matrix[:, i]  # shape: (num_experts,)
             scores = -sample_ppls
             probs = torch.softmax(scores / self.selection_temperature, dim=0)
+            print(f"probs = {probs}")
             chosen_expert = torch.multinomial(probs, num_samples=1).item()
+            print(f"chosen = {chosen_expert}")
             delegation.append(chosen_expert)
 
         self.selection_temperature = max(0.001, self.selection_temperature * (0.9995**perplexity_matrix.size(1)))
