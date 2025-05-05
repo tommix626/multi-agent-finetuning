@@ -74,6 +74,7 @@ class BufferedExpertTrainer(ExpertTrainer):
                     if self.buffer_manager.is_ready(expert_id):
                         print(f"[Buffer Manager] Expert {expert_id} is ready! Train!")
                         ready_batches = self.buffer_manager.get_ready_batches(expert_id)
+                        print(f"ready batch={ready_batches}")
                         combined_batch = self._collate_batches(ready_batches)
                         expert = self.expert_cluster.get_expert_by_id(expert_id)
 
