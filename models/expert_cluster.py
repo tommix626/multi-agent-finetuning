@@ -119,12 +119,8 @@ class ExpertCluster:
 
             probs = torch.softmax(scores, dim=0)
             chosen_expert = torch.multinomial(probs, num_samples=1).item()
-            print(f"scores={scores}\nprobs={probs}\nchosen={chosen_expert}\n")
+            # print(f"scores={scores}\nprobs={probs}\nchosen={chosen_expert}\n")
             delegation.append(chosen_expert)
-
-        self.selection_temperature = max(0.001, self.selection_temperature * (0.9995**perplexity_matrix.size(1)))
-        print(f"[ExpertCluster] Delegation complete for batch. Temperature now {self.selection_temperature:.4f}")
-        return delegation
 
         self.selection_temperature = max(0.001, self.selection_temperature * (0.9995**perplexity_matrix.size(1)))
         print(f"[ExpertCluster] Delegation complete for batch. Temperature now {self.selection_temperature:.4f}")
