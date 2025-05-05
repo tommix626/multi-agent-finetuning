@@ -64,7 +64,7 @@ class BufferedExpertTrainer(ExpertTrainer):
                 expert_assignments = self.expert_cluster.delegate_batch(batch)  # shape: (batch_size,)
                 batch_size = len(expert_assignments)
                 for i in range(batch_size):
-                    row = {k: v[i] for k, v in batch.items()}
+                    row = {k: v[i] for k, v in batch.items()}  # NOTE: we break batch down into size 1 batches and then buffer them.
                     expert_id = expert_assignments[i]
                     self.buffer_manager.add(expert_id, row)
                 # expert_id, expert = self.expert_cluster.delegate_with_id(batch)
@@ -74,7 +74,7 @@ class BufferedExpertTrainer(ExpertTrainer):
                     if self.buffer_manager.is_ready(expert_id):
                         print(f"[Buffer Manager] Expert {expert_id} is ready! Train!")
                         ready_batches = self.buffer_manager.get_ready_batches(expert_id)
-                        print(f"ready batch={ready_batches}")
+                        # print(f"ready batch={ready_batches}")
                         combined_batch = self._collate_batches(ready_batches)
                         expert = self.expert_cluster.get_expert_by_id(expert_id)
 
@@ -135,9 +135,11 @@ class BufferedExpertTrainer(ExpertTrainer):
         for key, value_list in merged.items():
             if isinstance(value_list[0], torch.Tensor):
                 collated[key] = torch.cat(value_list, dim=0)
-            elif isinstance(value_list[0], list):
-                # Flatten a list of lists (e.g., uid)
-                collated[key] = [item for sublist in value_list for item in sublist]
+            # elif isinstance(value_list[0], list):
+            #     # Flatten a list of lists (e.g., uid)
+            #     collated[key] = [item for sublist in value_list for item in sublist]
+            elif isinstance(value_list[0], str):
+                collated[key] = value_list
             else:
                 raise TypeError(f"Unsupported batch field type for key '{key}': {type(value_list[0])}")
 
