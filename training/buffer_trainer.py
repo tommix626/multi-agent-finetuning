@@ -134,7 +134,7 @@ class BufferedExpertTrainer(ExpertTrainer):
         collated = {}
         for key, value_list in merged.items():
             if isinstance(value_list[0], torch.Tensor):
-                collated[key] = torch.cat(value_list, dim=0)
+                collated[key] = torch.stack(value_list, dim=0)
             # elif isinstance(value_list[0], list):
             #     # Flatten a list of lists (e.g., uid)
             #     collated[key] = [item for sublist in value_list for item in sublist]
