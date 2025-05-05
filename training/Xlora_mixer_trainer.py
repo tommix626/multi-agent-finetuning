@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 XLoraMixerTrainer: Specialized trainer for the X-LoRA mixture-of-experts model.
 This trainer freezes the base model and LoRA adapters and only trains the X-LoRA mixer.
@@ -145,10 +146,22 @@ class XLoraMixerTrainer:
     def train(self):
         """Train the X-LoRA mixer."""
         print("[XLoraMixerTrainer] Starting training...")
-        
+
+        # --- ADDED: prepare loss log file ---
+        loss_log_path = "/home/rliu79/test/multi-agent-finetuning/logs/outputs/loss.txt"
+        os.makedirs(os.path.dirname(loss_log_path), exist_ok=True)
+        loss_file = open(loss_log_path, "a")
+        # ---------------------------------------
+
         for epoch in range(self.config.epochs):
             print(f"\nEpoch {epoch + 1}/{self.config.epochs}")
             
+            # Print trainable parameters at the start of each epoch
+            print("[DEBUG] Trainable parameters at start of epoch:")
+            for name, param in self.model.named_parameters():
+                status = "requires_grad=True" if param.requires_grad else "frozen"
+                print(f"  {name}: {status}")
+
             running_loss = 0.0
             progress_bar = tqdm(self.dataloader, desc=f"Epoch {epoch + 1}")
             
@@ -168,6 +181,10 @@ class XLoraMixerTrainer:
                 loss.backward()
                 self.optimizer.step()
                 
+                # --- ADDED: write to loss log file ---
+                loss_file.write(f"{epoch+1} - {step} - {loss.item():.4f}\n")
+                # ----------------------------------------
+
                 # Logging
                 running_loss += loss.item()
                 progress_bar.set_postfix({
@@ -175,25 +192,15 @@ class XLoraMixerTrainer:
                     "loss": f"{loss.item():.4f}"
                 })
                 
-                # Optional: visualize expert weights periodically
-                '''if step % self.config.eval_steps == 0:
-                    try:
-                        weights = self.expert_cluster.get_expert_mixing_weights()
-                        if weights is not None:
-                            expert_weights = weights.mean(dim=(0, 1, 2))
-                            print(f"Expert mixing weights: {expert_weights}")
-                    except (AttributeError, ValueError) as e:
-                        print(f"[Warning] Could not retrieve expert weights: {e}")'''
-                
                 # Save checkpoint if needed
                 if step > 0 and step % self.config.save_steps == 0:
                     self._save_checkpoint(epoch, step)
-                
             
             # End of epoch
             avg_loss = running_loss / len(self.dataloader)
             self.metrics["train_loss"].append(avg_loss)
             print(f"[XLoraMixerTrainer] Epoch {epoch + 1} complete. Avg Loss: {avg_loss:.4f}")
+            
             # Evaluate if evaluation dataloader is available
             if self.eval_dataloader is not None:
                 eval_loss = self._evaluate()
@@ -202,8 +209,11 @@ class XLoraMixerTrainer:
             
             # Save checkpoint at end of epoch
             self._save_checkpoint(epoch)
-        
-        # End of training
+
+        # --- ADDED: close loss log file ---
+        loss_file.close()
+        # ---------------------------------------
+
         print("[XLoraMixerTrainer] Training complete!")
     
     def _evaluate(self):
@@ -228,9 +238,10 @@ class XLoraMixerTrainer:
     
     def _save_checkpoint(self, epoch: int, step: Optional[int] = None):
         """Save the X-LoRA model and training state."""
-        # Create checkpoint directory
+        # Build mixer-specific checkpoint path:
         step_suffix = f"-step-{step}" if step is not None else ""
-        save_dir = self.config.base_dir
+        base = self.config.base_dir.rstrip("/")
+        save_dir = f"{base}-mixer{step_suffix}"
         os.makedirs(save_dir, exist_ok=True)
         
         # Save the X-LoRA model
@@ -247,13 +258,6 @@ class XLoraMixerTrainer:
         with open(os.path.join(save_dir, "trainer_state.json"), "w") as f:
             json.dump(trainer_state, f, indent=2)
         
-        # Save scalings log if enabled
-        '''if self.config.log_scalings:
-            try:
-                self.model.flush_log_scalings(os.path.join(save_dir, "scalings_log"))
-            except Exception as e:
-                print(f"[XLoraMixerTrainer] Warning: Failed to save scalings log: {e}")'''
-        
         # Save metadata
         metadata = {
             "save_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -266,5 +270,4 @@ class XLoraMixerTrainer:
         with open(os.path.join(save_dir, "xlora_metadata.json"), "w") as f:
             json.dump(metadata, f, indent=2)
         
-        print(f"[XLoraMixerTrainer] Saved checkpoint to {save_dir}")
-    
+        print(f"[XLoraMixerTrainer] Saved mixer checkpoint to {save_dir}")
