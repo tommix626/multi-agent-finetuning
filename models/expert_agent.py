@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Optional
+from typing import List, Optional
 from peft import PeftConfig, PeftModel
 import torch
 from transformers.models.auto.tokenization_auto import AutoTokenizer
@@ -8,6 +8,7 @@ from transformers.models.auto.tokenization_auto import AutoTokenizer
 from collections import defaultdict
 
 from models.expert_adapter import ExpertAdapter
+import torch.nn.functional as F
 
 class ExpertAgent:
     def __init__(self, expert_id: int, base_peft_model: PeftModel, adapter_config: PeftConfig, tokenizer:AutoTokenizer, device:str ):
@@ -18,8 +19,12 @@ class ExpertAgent:
 
         self.adapter = ExpertAdapter(self.peft_model, adapter_config, f"adapter_for_expert_{self.id}", tokenizer, device)
 
-    def compute_perplexity(self, batch: dict) -> float:
-        """Compute average perplexity of the batch under this expert."""
+
+    def compute_perplexity(self, batch: dict) -> List[float]:
+        """
+        Compute per-sample perplexities for a batch under this expert.
+        Returns a list of length batch_size.
+        """
         self.adapter.activate()
         self.peft_model.eval()
 
@@ -30,14 +35,27 @@ class ExpertAgent:
 
             outputs = self.peft_model(
                 input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels
+                attention_mask=attention_mask
             )
+            logits = outputs.logits  # (batch_size, seq_len, vocab_size)
 
-            loss = outputs.loss  # average loss over batch
-            perplexity = torch.exp(loss).item()
+            # Shift logits and labels for next-token prediction
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            shift_mask = attention_mask[..., 1:].contiguous()
 
-        return perplexity
+            # Flatten for loss computation
+            loss_per_token = F.cross_entropy(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
+                reduction='none'
+            ).view(shift_labels.size())
+
+            # Masked mean loss per sample
+            loss_per_sample = (loss_per_token * shift_mask).sum(dim=1) / shift_mask.sum(dim=1)
+
+            perplexity_per_sample = torch.exp(loss_per_sample).tolist()
+            return perplexity_per_sample
 
 
 

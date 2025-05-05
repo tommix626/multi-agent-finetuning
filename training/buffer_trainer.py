@@ -60,7 +60,6 @@ class BufferedExpertTrainer(ExpertTrainer):
 
             for step, batch in enumerate(progress_bar):
                 self._trigger_callbacks("on_batch_start")
-
                 # Routing logic: each row goes to one expert
                 expert_assignments = self.expert_cluster.delegate_batch(batch)  # shape: (batch_size,)
                 batch_size = len(expert_assignments)
