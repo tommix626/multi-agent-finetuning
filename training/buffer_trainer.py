@@ -106,6 +106,7 @@ class BufferedExpertTrainer(ExpertTrainer):
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
+                    torch.cuda.empty_cache()
                     running_loss += loss.item()
 
             avg_loss = running_loss / len(self.dataloader)
