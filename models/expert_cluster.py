@@ -109,10 +109,13 @@ class ExpertCluster:
 
             sample_ppls = perplexity_matrix[:, i]  # shape: (num_experts,)
             scores = -sample_ppls
+            print(f"unnorm, neg scores={scores}")
 
             # 🔥 Apply normalization as in _select()
             norm_factor = torch.sum(scores).clamp(min=1e-6)
+            print(f"norm factor={norm_factor}")
             scores = scores / norm_factor * 5 / self.selection_temperature
+            print(f"sum of scores={scores.sum()}")
 
             probs = torch.softmax(scores, dim=0)
             chosen_expert = torch.multinomial(probs, num_samples=1).item()
