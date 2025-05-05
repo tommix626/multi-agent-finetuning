@@ -62,6 +62,9 @@ class ExpertAgent:
     def get_training_loss_on(self, batch: dict, record_training=True):
         """Get training this expert on a single datapoint."""
         # Activate the adapter, forward pass, then query the log prob. Follow Hw6/Hw7
+        for k, v in batch.items():
+            if isinstance(v, torch.Tensor):
+                print(f"[DEBUG] {k}.shape = {v.shape}")
         self.adapter.activate()
         self.peft_model.train()
 
