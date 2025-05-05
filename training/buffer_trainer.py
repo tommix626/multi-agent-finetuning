@@ -92,6 +92,8 @@ class BufferedExpertTrainer(ExpertTrainer):
                             "expert": expert_id,
                             "loss": f"{loss.item():.4f}"
                         })
+                        del loss
+                        torch.cuda.empty_cache()
 
                 self._trigger_callbacks("on_batch_end")
 
@@ -106,6 +108,7 @@ class BufferedExpertTrainer(ExpertTrainer):
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
+                    del loss
                     torch.cuda.empty_cache()
                     running_loss += loss.item()
 
