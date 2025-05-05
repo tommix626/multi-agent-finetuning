@@ -98,7 +98,7 @@ class ExpertCluster:
         # Shape: (num_experts, batch_size)
         perplexity_matrix = torch.stack(all_perplexities)
         print(f"perplexity matrix shape={perplexity_matrix.shape}")
-        print(f"perplexity matrix={perplexity_matrix}")
+        # print(f"perplexity matrix={perplexity_matrix}")
 
         delegation = []
         epsilon = 0.05
