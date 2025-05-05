@@ -70,11 +70,52 @@ class ExpertCluster:
         for i in range(num_agents):
             self.experts.append(ExpertAgent(i, self.peft_model, self.peft_config, self.tokenizer, self.device))  # expert themselves manage the adapter logics.
 
-    def delegate_to_expert(self, batch:dict) -> Tuple[int, ExpertAgent]:
-        perplexities = [exp.compute_perplexity(batch) for exp in self.experts]
+    def delegate_with_id(self, batch: dict) -> Tuple[int, ExpertAgent]:
+        """
+        Evaluate the full batch under each expert exactly once,
+        and select the expert with lowest (or sampled) perplexity.
+        """
+        perplexities = []
+        for expert in self.experts:
+            ppl = expert.compute_perplexity(batch)
+            perplexities.append(ppl)
+
         chosen_expert_id = self._select(perplexities)
-        print(f"[Expert cluster] deledate to expert {self.experts[chosen_expert_id].adapter.name}")
+        print(f"[Expert cluster] Delegate to expert {self.experts[chosen_expert_id].adapter.name}")
         return chosen_expert_id, self.experts[chosen_expert_id]
+
+    def delegate_batch(self, batch:dict):
+        """
+        For each sample in the batch, choose the expert with softmax sampling over per-sample perplexities.
+        Returns a list of expert IDs of length batch_size.
+        """
+        # Step 1: Get per-sample perplexities from each expert
+        all_perplexities = []  # List[Tensor] of shape (batch_size,)
+        for expert in self.experts:
+            ppl = expert.compute_perplexity(batch)  # shape (batch_size,)
+            all_perplexities.append(torch.tensor(ppl))  # convert to Tensor if needed
+
+        # Shape: (num_experts, batch_size)
+        perplexity_matrix = torch.stack(all_perplexities)
+        print(f"perplexity matrix shape={perplexity_matrix.shape}")
+        # Step 2: Sample expert for each item in the batch
+        delegation = []
+        epsilon = 0.05
+        for i in range(perplexity_matrix.size(1)):  # for each sample
+            if random.random() < epsilon:
+                # epsilon-greedy random assignment
+                delegation.append(random.randint(0, len(self.experts) - 1))
+                continue
+
+            sample_ppls = perplexity_matrix[:, i]  # shape: (num_experts,)
+            scores = -sample_ppls
+            probs = torch.softmax(scores / self.selection_temperature, dim=0)
+            chosen_expert = torch.multinomial(probs, num_samples=1).item()
+            delegation.append(chosen_expert)
+
+        self.selection_temperature = max(0.001, self.selection_temperature * (0.9995**perplexity_matrix.size(1)))
+        print(f"[ExpertCluster] Delegation complete for batch. Temperature now {self.selection_temperature:.4f}")
+        return delegation
 
     def _select(self, perplexities: List[float]) -> int:
         """delegation strategy for which expert to train on

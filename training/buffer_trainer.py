@@ -61,28 +61,37 @@ class BufferedExpertTrainer(ExpertTrainer):
             for step, batch in enumerate(progress_bar):
                 self._trigger_callbacks("on_batch_start")
 
-                expert_id, expert = self.expert_cluster.delegate_to_expert(batch)
-                self.buffer_manager.add(expert_id, batch)
+                # Routing logic: each row goes to one expert
+                expert_assignments = self.expert_cluster.delegate_batch(batch)  # shape: (batch_size,)
+                batch_size = len(expert_assignments)
+                for i in range(batch_size):
+                    row = {k: v[i] for k, v in batch.items()}
+                    expert_id = expert_assignments[i]
+                    self.buffer_manager.add(expert_id, row)
+                # expert_id, expert = self.expert_cluster.delegate_with_id(batch)
+                # self.buffer_manager.add(expert_id, batch)
 
-                loss = None
-                if self.buffer_manager.is_ready(expert_id):
-                    print(f"[Buffer Manager] Expert {expert_id} is ready! Train!")
-                    ready_batches = self.buffer_manager.get_ready_batches(expert_id)
-                    combined_batch = self._collate_batches(ready_batches)
-                    loss = expert.get_training_loss_on(combined_batch)
+                for expert_id in set(expert_assignments):
+                    if self.buffer_manager.is_ready(expert_id):
+                        print(f"[Buffer Manager] Expert {expert_id} is ready! Train!")
+                        ready_batches = self.buffer_manager.get_ready_batches(expert_id)
+                        combined_batch = self._collate_batches(ready_batches)
+                        expert = self.expert_cluster.get_expert_by_id(expert_id)
 
-                    # Optimization step
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
+                        loss = expert.get_training_loss_on(combined_batch)
 
-                    # Logging
-                    running_loss += loss.item()
-                    progress_bar.set_postfix({
-                        "step": step,
-                        "expert": expert_id,
-                        "loss": f"{loss.item():.4f}"
-                    })
+                        # Optimization step
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        self.optimizer.step()
+
+                        # Logging
+                        running_loss += loss.item()
+                        progress_bar.set_postfix({
+                            "step": step,
+                            "expert": expert_id,
+                            "loss": f"{loss.item():.4f}"
+                        })
 
                 self._trigger_callbacks("on_batch_end")
 

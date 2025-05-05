@@ -19,14 +19,14 @@ class ExpertAgent:
         self.adapter = ExpertAdapter(self.peft_model, adapter_config, f"adapter_for_expert_{self.id}", tokenizer, device)
 
     def compute_perplexity(self, batch: dict) -> float:
-        """Return perplexity under this adapter."""
+        """Compute average perplexity of the batch under this expert."""
         self.adapter.activate()
         self.peft_model.eval()
-        
+
         with torch.no_grad():
             input_ids = batch['input_ids'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
-            labels = batch['labels'].clone().to(self.device)
+            labels = batch['labels'].to(self.device)
 
             outputs = self.peft_model(
                 input_ids=input_ids,
@@ -34,7 +34,7 @@ class ExpertAgent:
                 labels=labels
             )
 
-            loss = outputs.loss
+            loss = outputs.loss  # average loss over batch
             perplexity = torch.exp(loss).item()
 
         return perplexity
