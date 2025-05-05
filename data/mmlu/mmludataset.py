@@ -35,9 +35,9 @@ class MMLUWrapper:
         # train_expert = self._map_choices_to_answer(expert_split["train"], "train_expert")
         # dev_expert = self._map_choices_to_answer(expert_split["test"], "dev_expert")
 
-        train_for_clustering_analysis = raw["test"].train_test_split(test_size=0.8, seed=self.seed)
-        train_for_clustering_analysis = train_for_clustering_analysis["train"]
-        train_for_clustering_analysis = self._map_choices_to_answer(train_for_clustering_analysis, "train_for_clustering_analysis")
+        # train_for_clustering_analysis = raw["test"].train_test_split(test_size=0.8, seed=self.seed)
+        # train_for_clustering_analysis = train_for_clustering_analysis["train"]
+        # train_for_clustering_analysis = self._map_choices_to_answer(train_for_clustering_analysis, "train_for_clustering_analysis")
         
         train_classifier = self._map_choices_to_answer(raw["test"], "train_classifier")
 
@@ -64,8 +64,7 @@ class MMLUWrapper:
             "test": test,
             "train_full": train_full,
             "train_12": train_12,
-            "train_13": train_13,
-            "train_for_clustering_analysis": train_for_clustering_analysis
+            "train_13": train_13
         })
 
     def _map_choices_to_answer(self, dataset, split_name):
@@ -78,7 +77,7 @@ class MMLUWrapper:
                 "question": question,
                 "mapped_answer": answer_str,
                 "uid": f"{split_name}-{idx:06d}",  # e.g., train-000001
-                "subject": subject
+                #"subject": subject
             }
         return dataset.map(_mapper, with_indices=True)
     
@@ -182,7 +181,7 @@ class mmluDataset(torch.utils.data.Dataset):
         answer_encoding = self.tokenizer.encode_plus(
             answer,
             add_special_tokens=False,
-            max_length=self.max_len,
+            max_length=10,
             padding="max_length",
             truncation=True,
             return_tensors="pt"
@@ -216,7 +215,7 @@ def _sentence_transformer_cluster(texts, k):
     return kmeans.fit_predict(embeddings)
 
 
-def k_means_clustering(train_loader, k=5, method='tfidf'):
+def k_means_clustering(train_loader, k=6, method='tfidf'):
     """
     Cluster training examples based on concatenated question and answer strings.
 
@@ -229,6 +228,7 @@ def k_means_clustering(train_loader, k=5, method='tfidf'):
         List of k clusters, each a list of UIDs.
     """
     # Build a mapping from uid to concatenated text
+    print("[Step 1] Collecting texts and UIDs...")
     dataset = train_loader.dataset.data  
     uid2text = {ex['uid']: f"{ex['question']} {ex['mapped_answer']}" for ex in dataset}
 
@@ -238,6 +238,8 @@ def k_means_clustering(train_loader, k=5, method='tfidf'):
         for uid in batch['uid']:
             texts.append(uid2text[uid])
             uids.append(uid)
+
+    print(f"[Step 1 Done] Collected {len(texts)} texts")
 
     # Perform clustering
     if method == 'tfidf':
