@@ -417,3 +417,35 @@ def pre_process_subject_data(model_name, batch_size, split_name='train_expert', 
     )
     return subject_dataloader
 
+def get_clustered_dataloaders(model_name, batch_size, k=6, method='tfidf'):
+    """
+    Cluster train_12 data using KMeans and return a list of DataLoaders per cluster, plus dev/test DataLoaders.
+    """
+
+    mmlu_wrapper = MMLUWrapper()
+    train_data = mmlu_wrapper.get_dataset()["train_12"]
+    dev_data = mmlu_wrapper.get_dev()
+    test_data = mmlu_wrapper.get_test()
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    tokenizer.pad_token = tokenizer.eos_token
+    max_len = 512
+
+    train_dataset = mmluDataset(train_data, tokenizer, max_len)
+    full_loader = DataLoader(train_dataset, batch_size=batch_size)
+
+    print("Performing KMeans clustering...")
+    clustered_uids = k_means_clustering(full_loader, k=k, method=method)
+    uid_to_index = {ex['uid']: i for i, ex in enumerate(train_data)}
+
+    cluster_loaders = []
+    for i, cluster_uids in enumerate(clustered_uids):
+        subset = [train_data[uid_to_index[uid]] for uid in cluster_uids if uid in uid_to_index]
+        cluster_dataset = mmluDataset(subset, tokenizer, max_len)
+        cluster_loader = DataLoader(cluster_dataset, batch_size=batch_size)
+        cluster_loaders.append(cluster_loader)
+
+    dev_loader = DataLoader(mmluDataset(dev_data, tokenizer, max_len), batch_size=batch_size)
+    test_loader = DataLoader(mmluDataset(test_data, tokenizer, max_len), batch_size=batch_size)
+
+    return cluster_loaders, dev_loader, test_loader
