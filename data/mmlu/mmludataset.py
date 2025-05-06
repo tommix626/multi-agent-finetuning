@@ -10,7 +10,7 @@ import requests
 import argparse
 import os
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 from sentence_transformers import SentenceTransformer
@@ -215,45 +215,57 @@ def _sentence_transformer_cluster(texts, k):
     return kmeans.fit_predict(embeddings)
 
 
-def k_means_clustering(train_loader, k=6, method='tfidf'):
+def k_means_clustering(train_loader, k=5, method='tfidf'):
     """
-    Cluster training examples based on concatenated question and answer strings.
-
-    Args:
-        train_loader: DataLoader for training data (no shuffle ideally).
-        k: Number of clusters.
-        method: 'tfidf' or 'sentence-transformer'.
-
-    Returns:
-        List of k clusters, each a list of UIDs.
+    Cluster training examples based on concatenated question + answer.
+    This version:
+      • pulls texts/uids straight from train_loader.dataset.data
+      • uses TruncatedSVD on the sparse TF–IDF
+      • prints cluster sizes for quick sanity checks
     """
-    # Build a mapping from uid to concatenated text
-    print("[Step 1] Collecting texts and UIDs...")
-    dataset = train_loader.dataset.data  
-    uid2text = {ex['uid']: f"{ex['question']} {ex['mapped_answer']}" for ex in dataset}
 
-    # Extract texts in the order of the loader
-    texts, uids = [], []
-    for batch in train_loader:
-        for uid in batch['uid']:
-            texts.append(uid2text[uid])
-            uids.append(uid)
+    print("Step 1: ")
+    # 1) grab the raw data
+    raw_data = getattr(train_loader.dataset, 'data', None)
+    if raw_data is None:
+        raise ValueError("Cannot find `dataset.data` on the provided DataLoader")
+    
+    texts = [f"{ex['question']} {ex['mapped_answer']}" for ex in raw_data]
+    uids  = [ex['uid'] for ex in raw_data]
 
-    print(f"[Step 1 Done] Collected {len(texts)} texts")
+    if len(texts) == 0:
+        raise ValueError("No examples to cluster!")
 
-    # Perform clustering
+    assert len(texts) == len(uids), f"texts ({len(texts)}) vs uids ({len(uids)}) mismatch"
+
+    print("Step 2: ")
+    # 2) vectorize / embed
     if method == 'tfidf':
-        labels = _tfidf_cluster(texts, k)
+        vect = TfidfVectorizer(stop_words='english')
+        X    = vect.fit_transform(texts)               # sparse
+        n_comp = min(100, X.shape[1] - 1)
+        if n_comp <= 0:
+            raise ValueError("Too few TF–IDF features (<2) to run TruncatedSVD")
+        svd = TruncatedSVD(n_components=n_comp, random_state=42)
+        reduced = svd.fit_transform(X)                 # dense (n_samples × n_comp)
     elif method == 'sentence-transformer':
-        labels = _sentence_transformer_cluster(texts, k)
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        reduced = model.encode(texts, convert_to_numpy=True)
     else:
-        raise ValueError("Unsupported clustering method. Choose 'tfidf' or 'sentence-transformer'.")
+        raise ValueError(f"Unknown method `{method}`; choose 'tfidf' or 'sentence-transformer'")
 
-    # Group UIDs by cluster
-    clustered_uids = [[] for _ in range(k)]
-    for uid, label in zip(uids, labels):
-        clustered_uids[label].append(uid)
-    return clustered_uids
+    print("Step 3: ")
+    # 3) cluster
+    labels = KMeans(n_clusters=k, random_state=42).fit_predict(reduced)
+    assert len(labels) == len(uids), "Got a label count != number of examples"
+
+    print("Step 4: ")
+    # 4) group and debug-print
+    clusters = [[] for _ in range(k)]
+    for uid, lab in zip(uids, labels):
+        clusters[lab].append(uid)
+
+    return clusters
 
 
 def pre_process(model_name, batch_size, device, peft_config=None, mode='expert'):
