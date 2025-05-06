@@ -80,11 +80,17 @@ def plot_normalized_distributions(df, uid_to_subject, uid_to_freq_map, num_epoch
     ncols = 3
     nrows = math.ceil(len(experts) / ncols)
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(20, 6 * nrows), squeeze=False)
-
+    highlight_mask = normalized.eq(normalized.max(axis=0))
+    
     for idx, expert_id in enumerate(experts):
         row, col = divmod(idx, ncols)
         ax = axes[row][col]
-        normalized.loc[expert_id].sort_values().plot(kind='barh', ax=ax)
+        subject_values = normalized.loc[expert_id].sort_values()
+        subject_names = subject_values.index
+        is_max = highlight_mask.loc[expert_id, subject_names]
+        bar_colors = ['orange' if flag else 'blue' for flag in is_max]
+        subject_values.plot(kind='barh', ax=ax, color=bar_colors)
+        ax.axvline(1.0 / len(experts), color='gray', linestyle='--', linewidth=1)
 
         ax.set_title(f'Normalized Exposure - Expert {expert_id}', fontsize=12)
         ax.set_xlabel('Normalized Exposure', fontsize=10)
