@@ -15,24 +15,20 @@ def load_cluster_assignments(json_path):
     return cluster_assignments
 
 def build_uid_maps(mmlu_wrapper, expert_ids, base_path):
-    train_expert = mmlu_wrapper.get_analysis_dataset()
-    uid_to_subject = {example['uid']: example['subject'] for example in train_expert}
+    train_expert = mmlu_wrapper.get_train_classifier()
+    print(f"Total examples in train_expert: {len(train_expert)}")
+
+    uid_to_subject = {ex["uid"]: ex["subject"] for ex in train_expert}
     uid_to_freq = {}
 
     for expert_id in expert_ids:
-        freq_json = os.path.join(base_path, f"adapter_for_expert_{expert_id}", "training_data_freq.json")
-        if not os.path.exists(freq_json):
-            print(f"Warning: {freq_json} not found. Skipping expert {expert_id}.")
+        freq_path = os.path.join(base_path, f"adapter_for_expert_{expert_id}", "training_data_freq.json")
+        if not os.path.exists(freq_path):
+            print(f"[Warning] {freq_path} not found. Skipping expert {expert_id}.")
             continue
-        with open(freq_json, "r") as f:
-            partial_map = json.load(f)
-
-        overlapping = set(partial_map.keys()) & set(uid_to_freq.keys())
-        if overlapping:
-            print(f"[Warning] {len(overlapping)} UIDs from expert {expert_id} already exist in uid_to_freq. Overwriting.")
-
-        uid_to_freq[expert_id] = partial_map
-
+        with open(freq_path, "r") as f:
+            uid_to_freq[expert_id] = json.load(f)
+    
     return uid_to_subject, uid_to_freq
 
 def build_analysis_dataframe(assignments, uid_to_subject, uid_to_freq_map, expert_id):
@@ -43,7 +39,7 @@ def build_analysis_dataframe(assignments, uid_to_subject, uid_to_freq_map, exper
         if subject is None:
             print(f"[Warning] UID {uid} not found in subject map. Skipping.")
             continue
-        freq = uid_to_freq_map.get(uid, 1)
+        freq = expert_freq_map.get(uid, 1)
         data.append({'uid': uid, 'subject': subject, 'freq': freq, 'expert_id': expert_id})
     return pd.DataFrame(data)
 
@@ -67,20 +63,19 @@ def plot_normalized_distributions(df, uid_to_subject, uid_to_freq_map, num_epoch
     # Step 2: Compute weighted count per (expert_id, subject) using pre-attached freq column
     weighted_counts = df.groupby(["expert_id", "subject"])["freq"].sum().unstack(fill_value=0)
 
-    # Step 3: Normalize: divide by (subject size × epochs)
-    normalized = weighted_counts.divide(subject_total_counts, axis=1).divide(num_epochs)
+    expected_counts = subject_total_counts * num_epochs
+    normalized = weighted_counts.divide(expected_counts, axis=1)
 
     col_sums = normalized.sum(axis=0)
     failed = [(s, total) for s, total in col_sums.items() if abs(total - 1.0) > 1e-4]
     if failed:
         print("[ERROR] The following subjects do not sum to 1.0 across experts:")
-        for s, total in failed:
-            print(f" - {s}: {total:.5f}")
-        raise ValueError("Normalization failed sanity check.")
+        for s, val in failed:
+            print(f" - {s}: {val:.5f}")
+        raise ValueError("Normalization check failed.")
     else:
         print("[OK] All subjects correctly normalized across experts.")
-            
-    # Step 4: Plot
+
     experts = normalized.index.tolist()
     ncols = 3
     nrows = math.ceil(len(experts) / ncols)
@@ -107,8 +102,6 @@ def plot_normalized_distributions(df, uid_to_subject, uid_to_freq_map, num_epoch
         plt.savefig(save_path, dpi=500)
     plt.show()
 
-
-    
 def plot_subject_distributions(df, save_path=None):
     experts = sorted(df['expert_id'].unique())
     num_experts = len(experts)
@@ -139,32 +132,16 @@ def plot_subject_distributions(df, save_path=None):
         plt.savefig(save_path, dpi=500)
     plt.show()
 
-def sanity_check_maps(uid_to_subject, uid_to_freq_map):
-    missing_uids = [uid for uid in uid_to_freq_map if uid not in uid_to_subject]
-    if missing_uids:
-        print(f"[WARNING] {len(missing_uids)} UIDs in freq map not found in subject map. Examples: {missing_uids[:5]}")
-    else:
-        print("[OK] All UIDs in frequency map exist in subject map.")
-
-    freqs = pd.Series(uid_to_freq_map)
-    if (freqs <= 0).any():
-        print("[WARNING] Found UIDs with non-positive frequencies:")
-        print(freqs[freqs <= 0])
-    else:
-        print("[OK] All frequencies are positive.")
-
-    print(f"[INFO] Total unique UIDs in subject map: {len(uid_to_subject)}")
-    print(f"[INFO] Total unique UIDs in freq map: {len(uid_to_freq_map)}")
-
 
 def main():
     mmlu = MMLUWrapper()
-    expert_ids = list(range(6))
-    base_path = "D:/Users/lenovo/Desktop/low-mi-temp-epoch-9"
+    num_experts = 6
+    expert_ids = list(range(num_experts))
+    base_path = "D:/Users/lenovo/Desktop/new-data-split-slow-decay-epoch-17"
     uid_to_subject, uid_to_freq_map = build_uid_maps(mmlu, expert_ids, base_path)
     all_dfs = []
 
-    for expert_id in range(6):
+    for expert_id in expert_ids:
         cluster_json_path = f"{base_path}/adapter_for_expert_{expert_id}/training_data_freq.json"
         if not os.path.exists(cluster_json_path):
             print(f"Warning: {cluster_json_path} does not exist. Skipping.")
@@ -177,21 +154,20 @@ def main():
 
     full_df = pd.concat(all_dfs, ignore_index=True)
     print(f"Total matched examples across all experts: {len(full_df)}")
-
-    #sanity_check_maps(uid_to_subject, uid_to_freq_map)
+    print(f"Total training steps (UID x freq): {full_df['freq'].sum():,}")
 
     os.makedirs("evaluation", exist_ok=True)
 
     print("Plotting raw subject distributions...")
-    plot_subject_distributions(full_df, save_path="evaluation/all_expert_subject_distributions.png")
+    plot_subject_distributions(full_df, save_path="all_expert_subject_distributions.png")
     
     print("Plotting normalized subject exposures...")
     plot_normalized_distributions(
         full_df,
         uid_to_subject=uid_to_subject,
         uid_to_freq_map=uid_to_freq_map,
-        num_epochs=10,
-        save_path="evaluation/normalized_subject_exposures.png"
+        num_epochs=18,
+        save_path="normalized_subject_exposures.png"
     )
 
 if __name__ == "__main__":
