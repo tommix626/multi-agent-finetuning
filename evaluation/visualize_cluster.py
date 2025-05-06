@@ -137,7 +137,7 @@ def main():
     mmlu = MMLUWrapper()
     num_experts = 6
     expert_ids = list(range(num_experts))
-    base_path = "D:/Users/lenovo/Desktop/new-data-split-slow-decay-epoch-17"
+    base_path = "D:/Users/lenovo/Desktop/new-data-split-epoch-17"
     uid_to_subject, uid_to_freq_map = build_uid_maps(mmlu, expert_ids, base_path)
     all_dfs = []
 
@@ -156,10 +156,12 @@ def main():
     print(f"Total matched examples across all experts: {len(full_df)}")
     print(f"Total training steps (UID x freq): {full_df['freq'].sum():,}")
 
-    os.makedirs("evaluation", exist_ok=True)
+    output_dir_name = os.path.basename(base_path.rstrip("/\\"))
+    save_dir = os.path.join("cluster_visualization", output_dir_name)
+    os.makedirs(save_dir, exist_ok=True)
 
     print("Plotting raw subject distributions...")
-    plot_subject_distributions(full_df, save_path="all_expert_subject_distributions.png")
+    plot_subject_distributions(full_df, save_path=os.path.join(save_dir, "all_expert_subject_distributions.png"))
     
     print("Plotting normalized subject exposures...")
     plot_normalized_distributions(
@@ -167,7 +169,7 @@ def main():
         uid_to_subject=uid_to_subject,
         uid_to_freq_map=uid_to_freq_map,
         num_epochs=18,
-        save_path="normalized_subject_exposures.png"
+        save_path=os.path.join(save_dir, "normalized_subject_exposures.png")
     )
 
 if __name__ == "__main__":
