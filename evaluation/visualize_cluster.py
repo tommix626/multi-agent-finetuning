@@ -81,16 +81,18 @@ def plot_normalized_distributions(df, uid_to_subject, uid_to_freq_map, num_epoch
     nrows = math.ceil(len(experts) / ncols)
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(20, 6 * nrows), squeeze=False)
     highlight_mask = normalized.eq(normalized.max(axis=0))
-    
+    x_max = normalized.max().max() * 1.1
+
     for idx, expert_id in enumerate(experts):
         row, col = divmod(idx, ncols)
         ax = axes[row][col]
         subject_values = normalized.loc[expert_id].sort_values()
         subject_names = subject_values.index
         is_max = highlight_mask.loc[expert_id, subject_names]
-        bar_colors = ['orange' if flag else 'blue' for flag in is_max]
+        bar_colors = ['#FFA500' if flag else '#4682B4' for flag in is_max]
         subject_values.plot(kind='barh', ax=ax, color=bar_colors)
-        ax.axvline(1.0 / len(experts), color='gray', linestyle='--', linewidth=1)
+        ax.axvline(1.0 / len(experts), color='black', linestyle='--', linewidth=1)
+        ax.set_xlim(0, x_max)
 
         ax.set_title(f'Normalized Exposure - Expert {expert_id}', fontsize=12)
         ax.set_xlabel('Normalized Exposure', fontsize=10)
@@ -143,7 +145,7 @@ def main():
     mmlu = MMLUWrapper()
     num_experts = 6
     expert_ids = list(range(num_experts))
-    base_path = "D:/Users/lenovo/Desktop/new-data-split-epoch-17"
+    base_path = "D:/Users/lenovo/Desktop/new-data-split-slow-decay-epoch-17"
     uid_to_subject, uid_to_freq_map = build_uid_maps(mmlu, expert_ids, base_path)
     all_dfs = []
 
