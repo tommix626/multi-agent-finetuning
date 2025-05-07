@@ -143,7 +143,6 @@ Format:
 }
 """
 class mmluDataset(torch.utils.data.Dataset):
-
     def __init__(self, data, tokenizer, max_len):
         self.data = data
         self.tokenizer = tokenizer
@@ -154,49 +153,68 @@ class mmluDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """
-        Return a dictionary containing input_ids, attention_mask, and labels suitable for decoder-only models.
-        The model should learn to generate the answer given the question.
+        Return a dictionary suitable for decoder-only models with MCQ evaluation.
+        Includes `all_choice_labels`: a list of loss masks for each answer choice.
         """
         example = self.data[index]
-        question = example["question"]
-        answer = example["mapped_answer"]
+        question = example["question"].strip()
+        correct_answer = example["mapped_answer"].strip()
+        all_choices = example["choices"]
         uid = example["uid"]
 
-        # Concatenate question and answer as a single string
-        qa_pair = question.strip() + " " + answer.strip()
-
-        # Tokenize the full input (question + answer)
-        full_encoding = self.tokenizer(
-            qa_pair,
-            max_length=self.max_len,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt"
-        )
-
-        input_ids = full_encoding["input_ids"][0]
-        attention_mask = full_encoding["attention_mask"][0]
-
-        # Tokenize only the question to find its token length
+        # Tokenize the question (once)
         question_encoding = self.tokenizer(
-            question.strip(),
+            question,
             add_special_tokens=True,
             truncation=True,
             max_length=self.max_len,
             return_tensors="pt"
         )
-        question_length = question_encoding["input_ids"].shape[1]
+        question_input_ids = question_encoding["input_ids"][0]
+        question_attention_mask = question_encoding["attention_mask"][0]
+        question_len = question_input_ids.shape[0]
 
-        # Construct labels: mask question part with -100, keep answer part
-        labels = input_ids.clone()
-        labels[:question_length] = -100  # Ignore question tokens in loss
+        # Extend to full max_len
+        input_ids = torch.full((self.max_len,), self.tokenizer.pad_token_id)
+        attention_mask = torch.zeros(self.max_len, dtype=torch.long)
+        input_ids[:question_len] = question_input_ids
+        attention_mask[:question_len] = question_attention_mask
+
+        # Construct labels for correct answer (used during training)
+        correct_answer_encoding = self.tokenizer(
+            question + " " + correct_answer,
+            add_special_tokens=True,
+            truncation=True,
+            max_length=self.max_len,
+            return_tensors="pt"
+        )
+        full_input_ids = correct_answer_encoding["input_ids"][0]
+        labels = full_input_ids.clone()
+        labels[:question_len] = -100  # mask question tokens
+
+        # Build one loss mask per choice (for evaluation)
+        all_choice_labels = []
+        for choice in all_choices:
+            full_choice_encoding = self.tokenizer(
+                question + " " + choice.strip(),
+                add_special_tokens=True,
+                truncation=True,
+                max_length=self.max_len,
+                return_tensors="pt"
+            )
+            full_ids = full_choice_encoding["input_ids"][0]
+            label_mask = full_ids.clone()
+            label_mask[:question_len] = -100  # only supervise choice tokens
+            all_choice_labels.append(label_mask)
 
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels,
-            "uid": uid
-        }   
+            "uid": uid,
+            "all_choice_labels": all_choice_labels,
+            "all_choices": all_choices,  # for debugging/logging
+        }
 
 def _tfidf_cluster(texts, k):
     vectorizer = TfidfVectorizer(stop_words='english')
