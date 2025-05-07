@@ -189,7 +189,12 @@ class mmluDataset(torch.utils.data.Dataset):
             return_tensors="pt"
         )
         full_input_ids = correct_answer_encoding["input_ids"][0]
-        labels = full_input_ids.clone()
+        # labels = full_input_ids.clone()
+        # labels[:question_len] = -100  # mask question tokens
+
+        labels = torch.full((self.max_len,), -100)
+        label_len = full_input_ids.shape[0]
+        labels[:label_len] = full_input_ids
         labels[:question_len] = -100  # mask question tokens
 
         # Build one loss mask per choice (for evaluation)
@@ -206,6 +211,10 @@ class mmluDataset(torch.utils.data.Dataset):
             label_mask = full_ids.clone()
             label_mask[:question_len] = -100  # only supervise choice tokens
             all_choice_labels.append(label_mask)
+
+        assert input_ids.shape[0] == labels.shape[0]
+        assert labels.shape[0] == attention_mask.shape[0]
+        assert attention_mask.shape[0] == self.max_len
 
         return {
             "input_ids": input_ids,

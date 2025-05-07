@@ -30,6 +30,9 @@ def evaluate_model(model, batch, device, mode=1):
     input_ids = batch['input_ids'].to(device)
     attention_mask = batch['attention_mask'].to(device)
     labels = batch["labels"].to(device)
+    print(f"input shape={input_ids.shape}")
+    print(f"attn mask shape={attention_mask.shape}")
+    print(f"label shape={labels.shape}")
     output = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
     logits = output.logits
 
