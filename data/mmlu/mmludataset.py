@@ -191,6 +191,15 @@ class mmluDataset(torch.utils.data.Dataset):
         labels = input_ids.clone()
         labels[:question_length] = -100  # Ignore question tokens in loss
 
+        # Find where the answer ends: everything after the last non-pad token should be ignored
+        pad_token_id = self.tokenizer.pad_token_id
+        non_pad_indices = (input_ids != pad_token_id).nonzero(as_tuple=True)[0]
+        if len(non_pad_indices) > 0:
+            last_valid_index = non_pad_indices[-1].item()
+            labels[last_valid_index + 1:] = -100  # Mask everything after the answer
+        else:
+            labels[:] = -100  # All padding: mask everything
+
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
