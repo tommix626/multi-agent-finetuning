@@ -215,6 +215,7 @@ class mmluDataset(torch.utils.data.Dataset):
         assert input_ids.shape[0] == labels.shape[0]
         assert labels.shape[0] == attention_mask.shape[0]
         assert attention_mask.shape[0] == self.max_len
+        assert all_choice_labels[0].shape[0] == self.max_len
 
         return {
             "input_ids": input_ids,
