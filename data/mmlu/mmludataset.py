@@ -180,7 +180,7 @@ class mmluDataset(torch.utils.data.Dataset):
         # Tokenize only the question to find its token length
         question_encoding = self.tokenizer(
             question.strip(),
-            add_special_tokens=False,
+            add_special_tokens=True,
             truncation=True,
             max_length=self.max_len,
             return_tensors="pt"
