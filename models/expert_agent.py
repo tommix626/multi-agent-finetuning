@@ -59,45 +59,47 @@ class ExpertAgent:
             attention_mask=attention_mask,
             labels=labels
         )
-        if random.random() < 0.02:
-            # Verbose debugging
-            print("[DEBUG] ===== MODEL FORWARD =====")
-            print(f"[DEBUG] Input IDs: {input_ids[0].tolist()}")
-            print(f"[DEBUG] Labels:    {labels[0].tolist()}")
+        if random.random() < 0.02 or torch.isnan(outputs.loss):
+            with torch.no_grad():
+                # Verbose debugging
+                print("[DEBUG] ===== MODEL FORWARD =====")
+                print(f"[DEBUG] Input IDs: {input_ids[0].tolist()}")
+                print(f"[DEBUG] Labels:    {labels[0].tolist()}")
 
-            # Convert logits to predicted token ids (greedy argmax)
-            logits = outputs.logits
-            pred_ids = logits.argmax(dim=-1)
-            print(f"[DEBUG] Predicted: {pred_ids[0].tolist()}")
-            
-            # Show token-level loss if needed
-            if hasattr(outputs, "loss") and outputs.loss is not None:
-                print(f"[DEBUG] Loss: {outputs.loss.item()}")
-
+                # Convert logits to predicted token ids (greedy argmax)
+                logits = outputs.logits
+                pred_ids = logits.argmax(dim=-1)
+                print(f"[DEBUG] Predicted: {pred_ids[0].tolist()}")
                 
-            # Optionally decode if tokenizer is available
-            if hasattr(self, "tokenizer"):
-                decoded_input = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
-                decoded_label = self.tokenizer.decode(labels[0][labels[0] != -100], skip_special_tokens=True)
-                decoded_pred = self.tokenizer.decode(pred_ids[0], skip_special_tokens=True)
-                print(f"[DEBUG] Decoded Input:  {decoded_input}")
-                print(f"[DEBUG] Decoded Label:  {decoded_label}")
-                print(f"[DEBUG] Decoded Output: {decoded_pred}")
+                # Show token-level loss if needed
+                if hasattr(outputs, "loss") and outputs.loss is not None:
+                    print(f"[DEBUG] Loss: {outputs.loss.item()}")
 
-                # Print top-20 tokens with probabilities at each label position
-                probs = F.softmax(logits[0], dim=-1)  # (seq_len, vocab_size)
-                print("[DEBUG] Top-20 token predictions per position:")
-                for i, (logit_vec, label_id) in enumerate(zip(logits[0], labels[0])):
-                    if label_id == -100:
-                        continue  # skip padding/untrained positions
-                    top_probs, top_ids = torch.topk(probs[i], 20)
-                    tokens = self.tokenizer.convert_ids_to_tokens(top_ids.tolist())
-                    print(f"  Position {i}: Label={self.tokenizer.convert_ids_to_tokens([label_id.item()])[0]}")
-                    for tok, prob in zip(tokens, top_probs.tolist()):
-                        print(f"    {tok:12s} : {prob:.4f}")
+                    
+                # Optionally decode if tokenizer is available
+                if hasattr(self, "tokenizer"):
+                    decoded_input = self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
+                    decoded_label = self.tokenizer.decode(labels[0][labels[0] != -100], skip_special_tokens=True)
+                    decoded_pred = self.tokenizer.decode(pred_ids[0], skip_special_tokens=True)
+                    print(f"[DEBUG] Decoded Input:  {decoded_input}")
+                    print(f"[DEBUG] Decoded Label:  {decoded_label}")
+                    print(f"[DEBUG] Decoded Output: {decoded_pred}")
+
+                    # Print top-20 tokens with probabilities at each label position
+                    probs = F.softmax(logits[0], dim=-1)  # (seq_len, vocab_size)
+                    print("[DEBUG] Top-20 token predictions per position:")
+                    for i, (logit_vec, label_id) in enumerate(zip(logits[0], labels[0])):
+                        if label_id == -100:
+                            continue  # skip padding/untrained positions
+                        top_probs, top_ids = torch.topk(probs[i], 20)
+                        tokens = self.tokenizer.convert_ids_to_tokens(top_ids.tolist())
+                        print(f"  Position {i}: Label={self.tokenizer.convert_ids_to_tokens([label_id.item()])[0]}")
+                        for tok, prob in zip(tokens, top_probs.tolist()):
+                            print(f"    {tok:12s} : {prob:.4f}")
 
 
         loss = outputs.loss
+
         self.record_datapoint(batch)
         
         return loss
