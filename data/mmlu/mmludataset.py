@@ -180,7 +180,7 @@ class mmluDataset(torch.utils.data.Dataset):
         input_ids[:question_len] = question_input_ids
         attention_mask[:question_len] = question_attention_mask
 
-        # Construct labels for correct answer (used during training)
+        # construct labels for correct answer (used during training)
         correct_answer_encoding = self.tokenizer(
             question + " " + correct_answer,
             add_special_tokens=True,
@@ -197,7 +197,7 @@ class mmluDataset(torch.utils.data.Dataset):
         labels[:label_len] = full_input_ids
         labels[:question_len] = -100  # mask question tokens
 
-        # Build one loss mask per choice (for evaluation)
+        # build one loss mask per choice (for evaluation)
         all_choice_labels = []
         for choice in all_choices:
             full_choice_encoding = self.tokenizer(
@@ -208,11 +208,17 @@ class mmluDataset(torch.utils.data.Dataset):
                 return_tensors="pt"
             )
             full_ids = full_choice_encoding["input_ids"][0]
-            label_mask = torch.full((self.max_len,), -100)  # Initialize with -100
+            label_mask = torch.full((self.max_len,), -100)  # initialize with -100
             label_len = min(full_ids.shape[0], self.max_len)
             label_mask[:label_len] = full_ids[:label_len]
-            label_mask[:question_len] = -100  # Mask the question tokens
+            label_mask[:question_len] = -100  # mask the question tokens
             all_choice_labels.append(label_mask)
+
+        try:
+            answer_index = all_choices.index(correct_answer)
+        except ValueError:
+            raise ValueError(f"[ERROR] Correct answer not found in choices: {correct_answer} not in {all_choices}")
+
 
         assert input_ids.shape[0] == labels.shape[0]
         assert labels.shape[0] == attention_mask.shape[0]
@@ -226,6 +232,7 @@ class mmluDataset(torch.utils.data.Dataset):
             "uid": uid,
             "all_choice_labels": all_choice_labels,
             "all_choices": all_choices,  # for debugging/logging
+            "answer_index": answer_index
         }
 
 def _tfidf_cluster(texts, k):
