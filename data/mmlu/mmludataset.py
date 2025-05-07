@@ -208,8 +208,10 @@ class mmluDataset(torch.utils.data.Dataset):
                 return_tensors="pt"
             )
             full_ids = full_choice_encoding["input_ids"][0]
-            label_mask = full_ids.clone()
-            label_mask[:question_len] = -100  # only supervise choice tokens
+            label_mask = torch.full((self.max_len,), -100)  # Initialize with -100
+            label_len = min(full_ids.shape[0], self.max_len)
+            label_mask[:label_len] = full_ids[:label_len]
+            label_mask[:question_len] = -100  # Mask the question tokens
             all_choice_labels.append(label_mask)
 
         assert input_ids.shape[0] == labels.shape[0]
