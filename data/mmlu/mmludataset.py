@@ -154,51 +154,50 @@ class mmluDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """
-        This function is called by the DataLoader to get an instance of the data
-        :param index:
-        :return:
+        Return a dictionary containing input_ids, attention_mask, and labels suitable for decoder-only models.
+        The model should learn to generate the answer given the question.
         """
-
         example = self.data[index]
         question = example["question"]
-        subject = example['subject']
-        answer = example['mapped_answer']
+        answer = example["mapped_answer"]
         uid = example["uid"]
 
+        # Concatenate question and answer as a single string
+        qa_pair = question.strip() + " " + answer.strip()
 
-        # Tokenize the question (input)
-        input_encoding = self.tokenizer.encode_plus(
-            question,
-            add_special_tokens=True,
+        # Tokenize the full input (question + answer)
+        full_encoding = self.tokenizer(
+            qa_pair,
             max_length=self.max_len,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-            return_attention_mask=True
-        )
-
-        # Tokenize the answer (label)
-        answer_encoding = self.tokenizer.encode_plus(
-            answer,
-            add_special_tokens=False,
-            max_length=10,
             padding="max_length",
             truncation=True,
             return_tensors="pt"
         )
 
-        # === Fix: Align label with -100 pad at front ===
-        labels = torch.full((self.max_len,), -100)  # Make labels same size as input_ids
-        labels[:answer_encoding['input_ids'].shape[1]] = answer_encoding['input_ids'][0]
+        input_ids = full_encoding["input_ids"][0]
+        attention_mask = full_encoding["attention_mask"][0]
 
-        # return Dict[str, torch.Tensor]
+        # Tokenize only the question to find its token length
+        question_encoding = self.tokenizer(
+            question.strip(),
+            add_special_tokens=False,
+            truncation=True,
+            max_length=self.max_len,
+            return_tensors="pt"
+        )
+        question_length = question_encoding["input_ids"].shape[1]
+
+        # Construct labels: mask question part with -100, keep answer part
+        labels = input_ids.clone()
+        labels[:question_length] = -100  # Ignore question tokens in loss
+
         return {
-            'input_ids': input_encoding['input_ids'][0], 
-            'attention_mask': input_encoding['attention_mask'][0],
-            'labels': labels,
-            'uid': uid
-        }
-    
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "uid": uid
+        }   
+
 def _tfidf_cluster(texts, k):
     vectorizer = TfidfVectorizer(stop_words='english')
     tfidf_matrix = vectorizer.fit_transform(texts)
