@@ -5,6 +5,7 @@ from typing import Optional
 from peft import PeftConfig, PeftModel
 import torch
 from transformers.models.auto.tokenization_auto import AutoTokenizer
+import torch.nn.functional as F  # needed for softmax
 
 from collections import defaultdict
 
@@ -82,6 +83,19 @@ class ExpertAgent:
                 print(f"[DEBUG] Decoded Input:  {decoded_input}")
                 print(f"[DEBUG] Decoded Label:  {decoded_label}")
                 print(f"[DEBUG] Decoded Output: {decoded_pred}")
+
+                # Print top-20 tokens with probabilities at each label position
+                probs = F.softmax(logits[0], dim=-1)  # (seq_len, vocab_size)
+                print("[DEBUG] Top-20 token predictions per position:")
+                for i, (logit_vec, label_id) in enumerate(zip(logits[0], labels[0])):
+                    if label_id == -100:
+                        continue  # skip padding/untrained positions
+                    top_probs, top_ids = torch.topk(probs[i], 20)
+                    tokens = self.tokenizer.convert_ids_to_tokens(top_ids.tolist())
+                    print(f"  Position {i}: Label={self.tokenizer.convert_ids_to_tokens([label_id.item()])[0]}")
+                    for tok, prob in zip(tokens, top_probs.tolist()):
+                        print(f"    {tok:12s} : {prob:.4f}")
+
 
         loss = outputs.loss
         self.record_datapoint(batch)
