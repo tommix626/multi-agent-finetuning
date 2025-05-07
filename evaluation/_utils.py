@@ -8,7 +8,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import get_peft_model, PeftConfig
 from training.cluster_perplexity_trainer import TrainerConfig
 from models.expert_cluster import ExpertCluster
-
+import numpy as np
 
 def evaluate_model(model, batch, device, mode=1):
     """
@@ -73,14 +73,16 @@ def evaluate_model(model, batch, device, mode=1):
 
 def mcq_acc(model, batch, device):
     """
-    For each example in the batch, compute the loss for each choice
-    and count a correct prediction if the lowest‐loss choice matches the true labels.
-    Returns: batch_accuracy (float in [0,1])
+    Compute MCQ‐style accuracy by choosing the answer with lowest loss.
+    Expects `batch` to contain:
+      - "input_ids": (B, L)
+      - "attention_mask": (B, L)
+      - "all_choice_labels": List[List[Tensor(L)]] of length B × C
+      - "answer_index": Tensor of shape (B,) with the correct choice index
     """
     input_ids = batch["input_ids"].to(device)
     attention_mask = batch["attention_mask"].to(device)
-    true_labels = batch["labels"].to(device)                # shape (B, L)
-    all_choice_labels = batch["all_choice_labels"]          # list of lists: len=B, each inner list len=C
+    answer_idx = batch["answer_index"].to(device)
 
     batch_size = input_ids.size(0)
     correct = 0
@@ -88,24 +90,20 @@ def mcq_acc(model, batch, device):
     model.eval()
     with torch.no_grad():
         for i in range(batch_size):
+            # compute one loss per choice
             losses = []
-            for choice_labels in all_choice_labels[i]:
+            for choice_labels in batch["all_choice_labels"][i]:
                 cl = choice_labels.to(device).unsqueeze(0)   # (1, L)
                 out = model(
-                    input_ids = input_ids[i].unsqueeze(0),
-                    attention_mask = attention_mask[i].unsqueeze(0),
-                    labels = cl
+                    input_ids=input_ids[i].unsqueeze(0),
+                    attention_mask=attention_mask[i].unsqueeze(0),
+                    labels=cl
                 )
-                # out.loss is avg over non-ignored tokens
                 losses.append(out.loss.item())
 
-            # pick the choice with lowest loss
             pred_idx = int(np.argmin(losses))
-            # find which index in all_choice_labels matches the true_labels
-            true_idx = next(
-                j for j, cl in enumerate(all_choice_labels[i])
-                if torch.equal(cl.to(device), true_labels[i])
-            )
+            true_idx = int(answer_idx[i].item())
+
             if pred_idx == true_idx:
                 correct += 1
 
