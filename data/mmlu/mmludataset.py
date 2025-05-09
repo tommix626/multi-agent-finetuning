@@ -15,10 +15,6 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 from sentence_transformers import SentenceTransformer
 
-# trainset is for part1 (clustering and fine-tuning)
-# devset is for training of part2 (prompt-tuning, mixer)
-# testset is for evaluation after part2 (overall evaluation)
-
 class MMLUWrapper:
     def __init__(self, seed=42, expert_train_size=0.5, mixer_train_size=0.3, dev_size=0.1, test_size=0.1):
         self.seed = seed
@@ -114,6 +110,9 @@ class MMLUWrapper:
     
     def get_train_full(self):
         return self.dataset["train_full"]
+    
+    def get_train_12(self):
+        return self.dataset["train_12"]
     
     def get_subject_subset(self, split_name: str, subject: str):
         """
@@ -260,7 +259,7 @@ def _sentence_transformer_cluster(texts, k):
     return kmeans.fit_predict(embeddings)
 
 
-def k_means_clustering(train_loader, k=5, method='tfidf'):
+def k_means_clustering(train_loader, k=5, method='tfidf', return_metadata=False):
     """
     Cluster training examples based on concatenated question + answer.
     This version:
@@ -277,6 +276,7 @@ def k_means_clustering(train_loader, k=5, method='tfidf'):
     
     texts = [f"{ex['question']} {ex['mapped_answer']}" for ex in raw_data]
     uids  = [ex['uid'] for ex in raw_data]
+    subject = [ex['subject'] for ex in raw_data]
 
     if len(texts) == 0:
         raise ValueError("No examples to cluster!")
@@ -310,7 +310,10 @@ def k_means_clustering(train_loader, k=5, method='tfidf'):
     for uid, lab in zip(uids, labels):
         clusters[lab].append(uid)
 
-    return clusters
+    if return_metadata:
+        return clusters, texts, subject, reduced, labels
+    else:
+        return clusters
 
 
 def pre_process(model_name, batch_size, device, peft_config=None, mode='expert'):
