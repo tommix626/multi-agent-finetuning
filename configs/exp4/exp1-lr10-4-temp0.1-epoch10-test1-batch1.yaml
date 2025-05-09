@@ -1,0 +1,13 @@
+model_name: "EleutherAI/gpt-neo-125M"
+batch_size: 1
+num_epochs: 10
+num_experts: 1
+learning_rate: 0.0001
+device: "cuda"
+save_dir: "./checkpoints"
+trainer_id: "exp1-lr10-4-temp0.1-epoch10-test1-batch1"
+lora_r: 8
+lora_alpha: 32
+lora_dropout: 0.1
+selection_temperature: 0.1
+early_stopping_patience: 10

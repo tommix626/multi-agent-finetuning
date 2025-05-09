@@ -1,0 +1,11 @@
+model_name: "EleutherAI/gpt-neo-125M"
+batch_size: 8
+num_epochs: 5
+learning_rate: 0.00001
+device: "cuda"
+save_dir: "./checkpoints"
+trainer_id: "kmeans-expert"
+lora_r: 8
+lora_alpha: 32
+lora_dropout: 0.1
+cluster: 6
