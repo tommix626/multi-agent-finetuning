@@ -12,7 +12,10 @@ import evaluate as evaluate
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from peft import LoraConfig, TaskType, get_peft_model
+import torch.nn.functional as F  # needed for softmax
 import time
+import yaml
+import random
 
 # Use a pipeline as a high-level helper
 from transformers import pipeline
@@ -29,8 +32,60 @@ import os
 # print(os.listdir("/home/cs601-lwang216/scr4-cs601-dkhasha1/cs601-lwang216/multi-agent-finetuning/data/mmlu"))
 
 import sys
-sys.path.insert(0, "/home/cs601-lwang216/scr4-cs601-dkhasha1/cs601-lwang216/multi-agent-finetuning/data/mmlu")
+sys.path.insert(0, "/home/xwang397/scr4_jeisner1/tomwang/multi-agent-finetuning-lena/data/mmlu")
 from mmludataset import pre_process, mmluDataset
+
+"""""
+The trainer class for training the clustering phase.
+Goal is to call trainer.train() to perform training.
+
+The Trainer manages:
+- Config (learning rate, schedule, hyperparameters)
+- Model and tokenizer instantiation
+- Optimizer setup
+- Expert cluster management
+- Training logic: loss calculation and backpropagation
+- Callback handling for modular events and logging
+"""
+
+from dataclasses import dataclass, asdict
+from datetime import datetime
+import json
+import os
+import subprocess
+from typing import Optional, List
+
+import torch
+from torch.utils.data import DataLoader
+from peft import get_peft_model
+from tqdm import tqdm
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from transformers.models.auto.tokenization_auto import AutoTokenizer
+
+@dataclass
+class TrainerConfig:
+    model_name: str = "EleutherAI/gpt-neo-125M"
+    lr: float = 1e-4
+    epochs: int = 3
+    device: str = "cuda"
+    trainer_id: str = "default-trainer"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train Lora Base Model")
+    parser.add_argument("--config", type=str, required=True, help="Path to the YAML or JSON config file.")
+    return parser.parse_args()
+
+def load_config(config_path: str) -> dict:
+    if config_path.endswith(".yaml") or config_path.endswith(".yml"):
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+    elif config_path.endswith(".json"):
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    else:
+        raise ValueError("Config file must be a .yaml, .yml, or .json file.")
+    return config
 
 def evaluate_model(model, dataloader, device):
     """
@@ -88,8 +143,57 @@ def evaluate_model(model, dataloader, device):
         "accuracy": accuracy
     }
 
+def save_checkpoint(epoch: int, training_id, training_config, metrics, model, extra_folder_id=""):
+    """Save training state after an epoch."""
 
-def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dataloder, device, lr, model_name, rank, mode):
+
+    # create folder for this
+    base_save_dir = f"checkpoints/{trainer_id}-epoch-{epoch}{extra_folder_id}"
+    os.makedirs(base_save_dir, exist_ok=True)
+    
+    model.save_pretrained(base_save_dir)
+
+    # Save trainer-level metrics
+    trainer_state = {
+        "epoch": epoch,
+        "metrics": metrics,
+    }
+
+    with open(os.path.join(base_save_dir, "trainer_state.json"), "w") as f:
+        json.dump(trainer_state, f, indent=2)
+    
+    # NOTE: Save metadata
+    def get_git_commit_hash() -> Optional[str]:
+        """Return the current Git commit hash, or None if not inside a Git repository."""
+        try:
+            commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+            return commit_hash
+        except Exception:
+            return None
+    def to_jsonable(obj):
+        """Try to convert an object to a JSON-serializable version."""
+        if isinstance(obj, (str, int, float, bool)) or obj is None:
+            return obj
+        try:
+            json.dumps(obj)  # check if json serializable
+            return obj
+        except (TypeError, OverflowError):
+            return str(obj)  # fallback: store its string version
+    config_dict = vars(training_config)
+    jsonable_config = {k: to_jsonable(v) for k, v in config_dict.items()}
+
+    metadata = {
+        "trainer_id": trainer_id,
+        "save_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "training_config": jsonable_config,
+    }
+
+    with open(os.path.join(base_save_dir, "metadata.json"), "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"[Trainer] Saved checkpoint and metadata after epoch {epoch}.")
+
+def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dataloder, device, lr, model_name, rank, mode, training_id, training_config):
     """ Train a PyTorch Module
 
     :param torch.nn.Module mymodel: the model to be trained
@@ -105,6 +209,7 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
     # here, we use the AdamW optimizer. Use torch.optim.AdamW
     print(" >>>>>>>>  Initializing optimizer")
     
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     optimizer = torch.optim.AdamW(mymodel.parameters(), lr=lr)
     # now, we set up the learning rate scheduler
     lr_scheduler = get_scheduler(
@@ -149,10 +254,47 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
             # - It's slightly different from the implementation in train of base_classification.py
             print(f"Batch {index} moved to device... shape: {input_ids.shape}")
 
-            output = mymodel(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
+            outputs = mymodel(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
+            
+            if random.random() < 0.02:
+            # Verbose debugging
+                print("[DEBUG] ===== MODEL FORWARD =====")
+                print(f"[DEBUG] Input IDs: {input_ids[0].tolist()}")
+                print(f"[DEBUG] Labels:    {labels[0].tolist()}")
+
+                # Convert logits to predicted token ids (greedy argmax)
+                logits = outputs.logits
+                pred_ids = logits.argmax(dim=-1)
+                print(f"[DEBUG] Predicted: {pred_ids[0].tolist()}")
+                
+                # Show token-level loss if needed
+                if hasattr(outputs, "loss") and outputs.loss is not None:
+                    print(f"[DEBUG] Loss: {outputs.loss.item()}")
+
+                    
+                # Optionally decode if tokenizer is available
+                decoded_input = tokenizer.decode(input_ids[0], skip_special_tokens=True)
+                decoded_label = tokenizer.decode(labels[0][labels[0] != -100], skip_special_tokens=True)
+                decoded_pred = tokenizer.decode(pred_ids[0], skip_special_tokens=True)
+                print(f"[DEBUG] Decoded Input:  {decoded_input}")
+                print(f"[DEBUG] Decoded Label:  {decoded_label}")
+                print(f"[DEBUG] Decoded Output: {decoded_pred}")
+
+                # Print top-20 tokens with probabilities at each label position
+                probs = F.softmax(logits[0], dim=-1)  # (seq_len, vocab_size)
+                print("[DEBUG] Top-20 token predictions per position:")
+                for i, (logit_vec, label_id) in enumerate(zip(logits[0], labels[0])):
+                    if label_id == -100:
+                        continue  # skip padding/untrained positions
+                    top_probs, top_ids = torch.topk(probs[i], 20)
+                    tokens = tokenizer.convert_ids_to_tokens(top_ids.tolist())
+                    print(f"  Position {i}: Label={tokenizer.convert_ids_to_tokens([label_id.item()])[0]}")
+                    for tok, prob in zip(tokens, top_probs.tolist()):
+                        print(f"    {tok:12s} : {prob:.4f}")
+
             # compute the loss using the loss function
             # your code ends here
-            loss = output.loss
+            loss = outputs.loss
             loss.backward()
 
             # update the model parameters depending on the model type
@@ -163,7 +305,7 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
             optimizer.zero_grad()
             print(f"Batch {index} optimizer step done")
 
-            logits = output.logits
+            logits = outputs.logits
             predictions = torch.argmax(logits, dim=-1)
 
             # Flatten prediction and padding tokens
@@ -182,8 +324,7 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
 
             total_loss += loss.item() * batch_tokens
             print("iteration done...")
-            # update metrics
-            # train_accuracy.add_batch(predictions=predictions, references=labels)
+
 
         # print evaluation metrics
         avg_train_loss = total_loss / total_tokens
@@ -210,54 +351,63 @@ def train(mymodel, num_epochs, train_dataloader, validation_dataloader, test_dat
         epoch_end_time = time.time()
         print(f"Epoch {epoch + 1} took {epoch_end_time - epoch_start_time} seconds")
 
-    checkpoint_dir = "./checkpoints"
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(checkpoint_dir, f"{model_name.replace('/', '_')}_r={rank}_mode={mode}_final.pt")
+        metrics = {
+            "train_accuracy": avg_train_accuracy,
+            "train_loss": avg_train_loss,
+            "train_perplexity": train_perplexity,
+            "dev_loss": val_accuracy["loss"],
+            "dev_perplexity": val_accuracy["perplexity"],
+            "test_loss": test_accuracy["loss"],
+            "test_perplexity": test_accuracy["perplexity"],
+        }
 
-    torch.save({
-        'epoch': num_epochs,
-        'model_state_dict': mymodel.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'lr_scheduler_state_dict': lr_scheduler.state_dict(),
-        'final_train_loss': avg_train_loss,
-        'final_train_perplexity': train_perplexity,
-        'final_train_accuracy': avg_train_accuracy,
-        'final_val_loss': val_accuracy['loss'],
-        'final_val_perplexity': val_accuracy['perplexity'],
-        'final_test_loss': test_accuracy['loss'],
-        'final_test_perplexity': test_accuracy['perplexity'],
-    }, checkpoint_path)
-
-    print(f"Final model checkpoint saved at {checkpoint_path}")
+        save_checkpoint(epoch=epoch, training_id = training_id, training_config = training_config, metrics=metrics, model = mymodel)
+        print(f"Model checkpoint saved")
 
 # the entry point of the program
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--small_subset", action='store_true')
-    parser.add_argument("--num_epochs", type=int, default=5)
-    parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-125m")
-    parser.add_argument("--rank", type=int, default=8)
-    parser.add_argument("--mode", type=str, default='full')
-    args = parser.parse_args()
-    print(f"Specified arguments: {args}")
 
-    assert type(args.small_subset) == bool, "small_subset must be a boolean"
+    args = parse_args()
+    config_dict = load_config(args.config)
+
+    # 1. Load hyperparameters
+    model_name = config_dict.get("model_name", "EleutherAI/gpt-neo-125M")
+    batch_size = config_dict.get("batch_size", 8)
+    num_epochs = config_dict.get("num_epochs", 3)
+    rank = config_dict.get("lora_r", 32)
+    learning_rate = config_dict.get("learning_rate", 1e-4)
+    device = config_dict.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+    save_dir = config_dict.get("save_dir", "./checkpoints")
+    default_trainer_id = f"default-{model_name}-batch-{batch_size}-r-{rank}-lr-{learning_rate}"
+    trainer_id = config_dict.get("trainer_id", default_trainer_id)
+    mode = config_dict.get("mode", "full")
+
+    # 2. Define LoRA config
+    print("initiating peft_config...")
+    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=config_dict.get("lora_r", 8), lora_alpha=config_dict.get("lora_alpha", 32), lora_dropout=config_dict.get("lora_dropout", 0.1), target_modules=["q_proj", "k_proj", "v_proj"])
+
     #load the data and models
     print("Loading model...")
     pretrained_model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-125m", torch_dtype=torch.float16)
-    print("initiating peft_config...")
-    peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.rank, lora_alpha=32, lora_dropout=0.1, target_modules=["q_proj", "k_proj", "v_proj"])
+    
     print("Running pre_process...")
-    pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=args.batch_size, device="cuda", peft_config=peft_config, mode =args.mode)  # Pass the LoRA configuration)
-
+    if (mode == "expert"):
+        pretrained_model, train_dataloader, _, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=batch_size, device=device, peft_config=peft_config, mode=mode)  # Pass the LoRA configuration)
+    else:
+        pretrained_model, train_dataloader, validation_dataloader, test_dataloader = pre_process(model_name="EleutherAI/gpt-neo-125m", batch_size=batch_size, device=device, peft_config=peft_config, mode=mode) 
+    trainer_config = TrainerConfig(
+        model_name=model_name,
+        lr=learning_rate,
+        epochs=num_epochs,
+        device=device,
+        trainer_id=trainer_id,
+    )
+    
     print(" >>>>>>>>  Starting training ... ")
-    train(pretrained_model, args.num_epochs, train_dataloader, validation_dataloader, test_dataloader, args.device, args.lr, args.model, args.rank)
+    train(pretrained_model, num_epochs, train_dataloader, validation_dataloader, test_dataloader, device, learning_rate, model_name, rank, mode, trainer_id, trainer_config)
 
-    val_accuracy = evaluate_model(pretrained_model, validation_dataloader, args.device)
+    val_accuracy = evaluate_model(pretrained_model, validation_dataloader, device)
     print(f" - Average DEV metrics: accuracy={val_accuracy['accuracy']}, perplexity={val_accuracy['perplexity']}, loss={val_accuracy['loss']}")
 
-    test_accuracy = evaluate_model(pretrained_model, test_dataloader, args.device)
+    test_accuracy = evaluate_model(pretrained_model, test_dataloader, device)
     print(f" - Average TEST metrics: accuracy={test_accuracy['accuracy']}, perplexity={test_accuracy['perplexity']}, loss={test_accuracy['loss']}")
