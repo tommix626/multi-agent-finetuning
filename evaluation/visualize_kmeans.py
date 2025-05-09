@@ -11,16 +11,6 @@ from data.mmlu.mmludataset import k_means_clustering, MMLUWrapper
 from torch.utils.data import DataLoader, Dataset
 
 def visualize_clusters(texts, embeddings, cluster_labels, subject_labels, method='pca', save_path=None):
-    """
-    Visualize clustering result in 2D and compare with ground-truth labels.
-
-    Args:
-        texts: List[str] - original texts
-        embeddings: np.ndarray - vectors used in clustering
-        cluster_labels: List[int] - from kmeans
-        true_subjects: List[str] - ground-truth subject labels
-        method: 'pca' or 'tsne'
-    """
     if method == 'pca':
         reducer = PCA(n_components=2)
     elif method == 'tsne':
@@ -57,7 +47,7 @@ def visualize_clusters(texts, embeddings, cluster_labels, subject_labels, method
 
 class DatasetWrapper(Dataset):
     def __init__(self, dataset):
-        self.dataset = dataset  # for .dataset.data to work in k_means_clustering
+        self.dataset = dataset
 
     @property
     def data(self):
@@ -75,7 +65,6 @@ class DatasetWrapper(Dataset):
 if __name__ == "__main__":
     mmlu = MMLUWrapper()
 
-    # Load raw HF dataset and wrap it
     raw_data = mmlu.get_train_classifier()
     wrapped_dataset = DatasetWrapper(raw_data)
     train_loader = DataLoader(wrapped_dataset, batch_size=1)

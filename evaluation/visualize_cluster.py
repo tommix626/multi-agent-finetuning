@@ -84,7 +84,7 @@ def plot_normalized_distributions(df, uid_to_subject, uid_to_freq_map, num_epoch
         print("[OK] All subjects correctly normalized across experts.")
 
     experts = normalized.index.tolist()
-    ncols = 3
+    ncols = 5
     nrows = math.ceil(len(experts) / ncols)
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(20, 6 * nrows), squeeze=False)
     highlight_mask = normalized.eq(normalized.max(axis=0))
@@ -137,7 +137,6 @@ def plot_subject_distributions(df, save_path=None):
         ax.tick_params(axis='y', labelsize=7)
         ax.tick_params(axis='x', labelsize=8)
 
-    # Hide unused subplots (if fewer than nrows * ncols)
     for idx in range(num_experts, nrows * ncols):
         row, col = divmod(idx, ncols)
         fig.delaxes(axes[row][col])
@@ -228,9 +227,9 @@ def extract_metadata_from_loader(data_loader):
 
 def main(method='sentence-transformer'):
     mmlu = MMLUWrapper()
-    num_experts = 6
+    num_experts = 10
     expert_ids = list(range(num_experts))
-    base_path = "D:/Users/lenovo/Desktop/new-data-split-slow-decay-epoch-17"
+    base_path = "D:/Users/lenovo/Desktop/exp10-lr10-5-temp0.1-epoch10-epoch-9"
     uid_to_subject, uid_to_freq_map = build_uid_maps(mmlu, expert_ids, base_path)
     all_dfs = []
 
@@ -261,7 +260,7 @@ def main(method='sentence-transformer'):
         full_df,
         uid_to_subject=uid_to_subject,
         uid_to_freq_map=uid_to_freq_map,
-        num_epochs=18,
+        num_epochs=10,
         save_path=os.path.join(save_dir, "normalized_subject_exposures.png")
     )
 
