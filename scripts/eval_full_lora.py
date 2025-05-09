@@ -3,19 +3,15 @@ import os
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel, PeftConfig, LoraConfig, TaskType, get_peft_model
-
+from tqdm import tqdm
 from data.mmlu.mmludataset import pre_process
 from evaluation._utils import evaluate_model
 
 def load_model_and_tokenizer(base_model_name, checkpoint_path, peft_config):
     # Load base model
-    model = AutoModelForCausalLM.from_pretrained(base_model_name, torch_dtype=torch.float16)
-    model = get_peft_model(model, peft_config)
-    
-    # Load weights
-    print(f"Loading model weights from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    base_model = AutoModelForCausalLM.from_pretrained(base_model_name, torch_dtype=torch.float16)
+
+    model = PeftModel.from_pretrained(base_model,checkpoint_path)
     
     return model
 
@@ -25,8 +21,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--model", type=str, default="EleutherAI/gpt-neo-125m")
-    parser.add_argument("--rank", type=int, default=8)
-    parser.add_argument("--mode", type=str, default='full')
+    parser.add_argument("--rank", type=int, default=48)
+    parser.add_argument("--mode", type=str, default='13')
     args = parser.parse_args()
 
     # Setup LoRA config
@@ -56,7 +52,7 @@ def main():
     total_batches = 0
 
     print("\nRunning Evaluation on Validation Set (per-batch)...")
-    for batch in val_loader:
+    for batch in tqdm(test_loader):
         batch_metrics = evaluate_model(model, batch, args.device)
         for k in total_metrics:
             total_metrics[k] += batch_metrics[k]
