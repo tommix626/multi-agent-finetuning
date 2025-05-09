@@ -8,63 +8,106 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import get_peft_model, PeftConfig
 from training.cluster_perplexity_trainer import TrainerConfig
 from models.expert_cluster import ExpertCluster
+import numpy as np
 
-
-def evaluate_model(model, batch, device):
+def evaluate_model(model, batch, device, mode=1):
     """
     Evaluate a PyTorch Model
     :param torch.nn.Module model: the model to be evaluated
-    :param torch.utils.data.DataLoader test_dataloader: DataLoader containing testing examples
-    :param torch.device device: the device that we'll be training on
-    :return accuracy
+    :param batch: one batch from DataLoader
+    :param torch.device device: device to run on
+    :param int mode: 0 for token‐accuracy (default), 1 for MCQ‐accuracy
+    :return dict(loss, perplexity, accuracy)
     """
-    # load metrics
     total_loss = 0.0
     total_tokens = 0
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='sum')
     total_correct = 0
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='sum')
 
-    # turn model into evaluation mode
     model.eval()
 
+    # forward pass
     input_ids = batch['input_ids'].to(device)
     attention_mask = batch['attention_mask'].to(device)
     labels = batch["labels"].to(device)
-
-    # forward pass
-    output = model(input_ids=input_ids, attention_mask=attention_mask, labels = labels)
-    print(f"model output.loss=", output.loss)
+    print(f"input shape={input_ids.shape}")
+    print(f"attn mask shape={attention_mask.shape}")
+    print(f"label shape={labels.shape}")
+    output = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
     logits = output.logits
 
-    # Shift for next token prediction
+    # Shift for next‐token
     shift_logits = logits[..., :-1, :].contiguous()
     shift_labels = labels[..., 1:].contiguous()
 
-    loss = loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+    loss = loss_fn(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1)
+    )
     num_tokens = (shift_labels != -100).sum()
 
     total_loss += loss.item()
     total_tokens += num_tokens.item()
 
-    # Compute accuracy 
-    predictions = torch.argmax(shift_logits, dim=-1)
+    # token‐level correct
+    preds = torch.argmax(shift_logits, dim=-1)
     mask = shift_labels != -100
-    correct = (predictions == shift_labels) & mask
-    total_correct += correct.sum().item()
+    total_correct += ((preds == shift_labels) & mask).sum().item()
 
     avg_loss = total_loss / total_tokens
     perplexity = torch.exp(torch.tensor(avg_loss)).item()
-    accuracy = total_correct / total_tokens
 
+    # --- NEW BRANCH ---
+    if mode == 1:
+        # MCQ‐style accuracy
+        accuracy = mcq_acc(model, batch, device)
+    else:
+        # token‐level accuracy
+        accuracy = total_correct / total_tokens
 
-    print(f"metric loss=", avg_loss)
-    # compute and return metrics
     return {
         "loss": avg_loss,
         "perplexity": perplexity,
         "accuracy": accuracy
     }
 
+def mcq_acc(model, batch, device):
+    """
+    Compute MCQ‐style accuracy by choosing the answer with lowest loss.
+    Expects `batch` to contain:
+      - "input_ids": (B, L)
+      - "attention_mask": (B, L)
+      - "all_choice_labels": List[List[Tensor(L)]] of length B × C
+      - "answer_index": Tensor of shape (B,) with the correct choice index
+    """
+    input_ids = batch["input_ids"].to(device)
+    attention_mask = batch["attention_mask"].to(device)
+    answer_idx = batch["answer_index"].to(device)
+
+    batch_size = input_ids.size(0)
+    correct = 0
+
+    model.eval()
+    with torch.no_grad():
+        for i in range(batch_size):
+            # compute one loss per choice
+            losses = []
+            for choice_labels in batch["all_choice_labels"][i]:
+                cl = choice_labels.to(device).unsqueeze(0)   # (1, L)
+                out = model(
+                    input_ids=input_ids[i].unsqueeze(0),
+                    attention_mask=attention_mask[i].unsqueeze(0),
+                    labels=cl
+                )
+                losses.append(out.loss.item())
+
+            pred_idx = int(np.argmin(losses))
+            true_idx = int(answer_idx[i].item())
+
+            if pred_idx == true_idx:
+                correct += 1
+
+    return correct / batch_size
 
 def load_expert_cluster_from_checkpoint(
     checkpoint_path: str,

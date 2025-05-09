@@ -143,7 +143,6 @@ Format:
 }
 """
 class mmluDataset(torch.utils.data.Dataset):
-
     def __init__(self, data, tokenizer, max_len):
         self.data = data
         self.tokenizer = tokenizer
@@ -154,42 +153,77 @@ class mmluDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """
-        Return a dictionary containing input_ids, attention_mask, and labels suitable for decoder-only models.
-        The model should learn to generate the answer given the question.
+        Return a dictionary suitable for decoder-only models with MCQ evaluation.
+        Includes `all_choice_labels`: a list of loss masks for each answer choice.
         """
         example = self.data[index]
-        question = example["question"]
-        answer = example["mapped_answer"]
+        question = example["question"].strip()
+        correct_answer = example["mapped_answer"].strip()
+        all_choices = example["choices"]
         uid = example["uid"]
 
-        # Concatenate question and answer as a single string
-        qa_pair = question.strip() + " " + answer.strip()
-
-        # Tokenize the full input (question + answer)
-        full_encoding = self.tokenizer(
-            qa_pair,
-            max_length=self.max_len,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt"
-        )
-
-        input_ids = full_encoding["input_ids"][0]
-        attention_mask = full_encoding["attention_mask"][0]
-
-        # Tokenize only the question to find its token length
+        # Tokenize the question (once)
         question_encoding = self.tokenizer(
-            question.strip(),
+            question,
             add_special_tokens=True,
             truncation=True,
             max_length=self.max_len,
             return_tensors="pt"
         )
-        question_length = question_encoding["input_ids"].shape[1]
+        question_input_ids = question_encoding["input_ids"][0]
+        question_attention_mask = question_encoding["attention_mask"][0]
+        question_len = question_input_ids.shape[0]
 
-        # Construct labels: mask question part with -100, keep answer part
-        labels = input_ids.clone()
-        labels[:question_length] = -100  # Ignore question tokens in loss
+        # Extend to full max_len
+        input_ids = torch.full((self.max_len,), self.tokenizer.pad_token_id)
+        attention_mask = torch.zeros(self.max_len, dtype=torch.long)
+        input_ids[:question_len] = question_input_ids
+        attention_mask[:question_len] = question_attention_mask
+
+        # construct labels for correct answer (used during training)
+        correct_answer_encoding = self.tokenizer(
+            question + " " + correct_answer,
+            add_special_tokens=True,
+            truncation=True,
+            max_length=self.max_len,
+            return_tensors="pt"
+        )
+        full_input_ids = correct_answer_encoding["input_ids"][0]
+        # labels = full_input_ids.clone()
+        # labels[:question_len] = -100  # mask question tokens
+
+        labels = torch.full((self.max_len,), -100)
+        label_len = full_input_ids.shape[0]
+        labels[:label_len] = full_input_ids
+        labels[:question_len] = -100  # mask question tokens
+
+        # build one loss mask per choice (for evaluation)
+        all_choice_labels = []
+        for choice in all_choices:
+            full_choice_encoding = self.tokenizer(
+                question + " " + choice.strip(),
+                add_special_tokens=True,
+                truncation=True,
+                max_length=self.max_len,
+                return_tensors="pt"
+            )
+            full_ids = full_choice_encoding["input_ids"][0]
+            label_mask = torch.full((self.max_len,), -100)  # initialize with -100
+            label_len = min(full_ids.shape[0], self.max_len)
+            label_mask[:label_len] = full_ids[:label_len]
+            label_mask[:question_len] = -100  # mask the question tokens
+            all_choice_labels.append(label_mask)
+
+        try:
+            answer_index = all_choices.index(correct_answer)
+        except ValueError:
+            raise ValueError(f"[ERROR] Correct answer not found in choices: {correct_answer} not in {all_choices}")
+
+
+        assert input_ids.shape[0] == labels.shape[0]
+        assert labels.shape[0] == attention_mask.shape[0]
+        assert attention_mask.shape[0] == self.max_len
+        assert all_choice_labels[0].shape[0] == self.max_len
 
         # Find where the answer ends: everything after the last non-pad token should be ignored
         pad_token_id = self.tokenizer.pad_token_id
@@ -204,8 +238,11 @@ class mmluDataset(torch.utils.data.Dataset):
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels,
-            "uid": uid
-        }   
+            "uid": uid,
+            "all_choice_labels": all_choice_labels,
+            "all_choices": all_choices,  # for debugging/logging
+            "answer_index": answer_index
+        }
 
 def _tfidf_cluster(texts, k):
     vectorizer = TfidfVectorizer(stop_words='english')

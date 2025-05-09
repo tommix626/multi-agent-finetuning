@@ -3,12 +3,12 @@
 #SBATCH --account=a100acct
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
-#SBATCH --partition=gpu-a100
-#SBATCH --mem-per-gpu=81G
-#SBATCH --exclude=c04,c18,c23
+#SBATCH --partition=gpu
+#SBATCH --mem-per-gpu=11G
+#SBATCH --exclude=c03,c04,c18,c23
 #SBATCH --gres=gpu:1
-#SBATCH --output=/home/rliu79/test/multi-agent-finetuning/logs/outputs/1.txt
-#SBATCH --error=/home/rliu79/test/multi-agent-finetuning/logs/errors/1.txt
+#SBATCH --output=/home/rliu79/test/multi-agent-finetuning/logs/outputs/test.txt
+#SBATCH --error=/home/rliu79/test/multi-agent-finetuning/logs/errors/test.txt
 
 set -x -e
 
@@ -91,7 +91,10 @@ export CMD="$LAUNCHER $PROGRAM"
 
 export PYTHONPATH=/home/rliu79/test/multi-agent-finetuning
 
+cd /home/rliu79/test/multi-agent-finetuning/
 #python -u /home/rliu79/test/multi-agent-finetuning/evaluation/mixer_evaluation.py
-python -u /home/rliu79/test/multi-agent-finetuning/scripts/mixture_training.py --config /home/rliu79/test/multi-agent-finetuning/configs/mixture_training.yml
+#python -u /home/rliu79/test/multi-agent-finetuning/scripts/mixture_training.py --config /home/rliu79/test/multi-agent-finetuning/configs/mixture_training.yml
+#python -u /home/rliu79/test/multi-agent-finetuning/data/mmlu/test_cluster_dataloaders.py
+python3 -u /home/rliu79/test/multi-agent-finetuning/evaluation/cluster_expert_evaluation.py --config /home/rliu79/test/multi-agent-finetuning/configs/new_save/new_data_split.yaml --epoch 50
 
 echo "END TIME: $(date)"
